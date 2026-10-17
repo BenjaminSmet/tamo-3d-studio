@@ -75,12 +75,18 @@ sudo apt-get install -y cuda-toolkit-12-8
 
 echo 'export CUDA_HOME=/usr/local/cuda-12.8' >> ~/.bashrc
 echo 'export PATH=$CUDA_HOME/bin:$PATH' >> ~/.bashrc
+echo 'export LIBRARY_PATH=/usr/lib/wsl/lib:$LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 nvcc --version
+ls /usr/lib/wsl/lib/libcuda.so*
 ```
 
 `nvcc --version` must report release 12.8. The `wsl-ubuntu` repository matters: it is
 the toolkit without a driver.
+
+The `LIBRARY_PATH` line is WSL2-specific. WSL2 keeps the GPU library `libcuda.so` in
+`/usr/lib/wsl/lib`, where the compiler doesn't look, and without it the nvdiffrec build in
+step 7 fails with `cannot find -lcuda`.
 
 ## 5. Install uv
 
@@ -158,6 +164,7 @@ succeeds, run it again with `--texture`.
 | --- | --- |
 | `nvidia-smi` not found in Ubuntu | Windows driver too old, or WSL1 instead of WSL2 (`wsl -l -v` in PowerShell) |
 | `nvcc` not found | Step 4 `PATH` lines not loaded; run `source ~/.bashrc` |
+| `cannot find -lcuda` while building nvdiffrec | Step 4 `LIBRARY_PATH` line missing; add it, then in `~/espalier` run `rm -rf src .venv` and `./install.sh` again |
 | `401` or `gated repo` errors | DINOv3 access not approved yet, or not logged in (step 6) |
 | Out of memory | Unreal or a browser holding video memory, or the WSL memory limit from step 2 not applied |
 | Build killed with no message | Ubuntu ran out of RAM; raise `memory` in `.wslconfig` or set `MAX_JOBS=4` before `./install.sh` |
