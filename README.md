@@ -30,6 +30,8 @@ docs/
        --image /mnt/c/Users/<you>/Pictures/actor-front.png --actor <actor-name>
    ```
 
+   The portrait is cut out and cropped square to the head and neck automatically
+   (`--no-crop` turns that off), then generated at `1024_cascade`.
    Every run creates a new folder under
    `library/projects/<project>/actors/<actor>/generations/` with the mesh (GLB and OBJ),
    the full log, and `run.json` with settings, timings and peak video memory.

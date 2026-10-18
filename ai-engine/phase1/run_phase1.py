@@ -3,7 +3,8 @@
 Each run gets its own folder under the actor's generations/ and is never overwritten:
 
     library/projects/<project>/actors/<actor>/generations/<timestamp>-<mode>/
-        input_rgba.png   background removed
+        input_cutout.png background removed
+        input_rgba.png   cropped to head and neck, what TRELLIS.2 sees
         model.glb        from Espalier-2
         model.obj        same mesh, for Mesh to MetaHuman
         espalier.log     full output
@@ -26,6 +27,8 @@ from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
+
+from crop_head import crop_head_and_neck
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -109,6 +112,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--keep-background", action="store_true",
                         help="skip background removal; the image must already have an alpha channel")
+    parser.add_argument("--no-crop", action="store_true",
+                        help="keep the full cut-out instead of cropping to head and neck")
     args = parser.parse_args()
 
     image = args.image.resolve()
@@ -137,15 +142,27 @@ def main() -> None:
         "started": datetime.now().isoformat(timespec="seconds"),
     }
 
-    rgba = run_dir / "input_rgba.png"
+    cutout = run_dir / "input_cutout.png"
     if args.keep_background:
         if not has_alpha(image):
             sys.exit("--keep-background needs an image with an alpha channel.")
-        shutil.copy2(image, rgba)
+        shutil.copy2(image, cutout)
     else:
         print("Removing background with BiRefNet...")
-        if run_logged([sys.executable, str(HERE / "prepare_image.py"), str(image), str(rgba)], log) != 0:
+        if run_logged([sys.executable, str(HERE / "prepare_image.py"), str(image), str(cutout)], log) != 0:
             sys.exit(f"Background removal failed. See {log}")
+
+    rgba = run_dir / "input_rgba.png"
+    cropped = False
+    with Image.open(cutout) as full:
+        if args.no_crop:
+            full.save(rgba)
+        else:
+            framed, cropped = crop_head_and_neck(full.convert("RGBA"))
+            framed.save(rgba)
+    record["cropped_to_head_and_neck"] = cropped
+    if not args.no_crop:
+        print("Cropped to head and neck." if cropped else "No shoulders found; using the full cut-out.")
 
     cmd = [str(espalier), str(rgba), str(run_dir), "--no-rembg",
            "--pipeline", args.pipeline, "--seed", str(args.seed)]
