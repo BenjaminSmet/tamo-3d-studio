@@ -30,11 +30,13 @@ args.run_dir.mkdir(parents=True)
 print("Removing background with BiRefNet...", flush=True)
 print("Cropped to head and neck.", flush=True)
 print("GPU memory in use before generation: 1200 MiB", flush=True)
-for percent in (10, 50, 100):
-    sys.stdout.write(f"\rSampling: {percent}%|#####| {percent}/100")
-    sys.stdout.flush()
-    time.sleep(0.05 if mode != "slow" else 2)
-print(flush=True)
+# Espalier-2's sampler bars, as in a 1024_cascade run: the shape is sampled twice.
+for bar in ("Sampling sparse structure", "Sampling shape SLat", "Sampling shape SLat", "Sampling texture SLat"):
+    for percent in (10, 50, 100, 100):   # tqdm redraws the finished bar
+        sys.stdout.write(f"\r{bar}: {percent}%|#####| {percent}/100")
+        sys.stdout.flush()
+        time.sleep(0.02 if mode != "slow" else 0.5)
+    print(flush=True)
 if mode == "fail":
     print("CUDA out of memory", flush=True)
     sys.exit(1)

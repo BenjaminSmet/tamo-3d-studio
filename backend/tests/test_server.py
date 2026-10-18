@@ -114,8 +114,10 @@ def test_progress_moves_through_stages(client, monkeypatch):
             break
         time.sleep(0.05)
     stages = {stage for stage, _ in seen}
-    assert "Generating the 3D head" in stages
-    assert any(0.1 < p < 0.9 for stage, p in seen if stage == "Generating the 3D head")
+    assert {"Generating: shape", "Generating: shape detail", "Generating: texture"} <= stages
+    # The cascade's second shape pass restarts at 0% but lands in its own band, after the first.
+    detail = [p for stage, p in seen if stage == "Generating: shape detail"]
+    assert detail and min(detail) >= 0.57 and max(detail) <= 0.66
 
 
 def test_rejects_bad_uploads_and_settings(client):
