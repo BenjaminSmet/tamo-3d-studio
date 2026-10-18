@@ -2,25 +2,31 @@
 
 A free, fully local app that turns actor images into clean, MetaHuman-ready head meshes.
 
-The project is in **Phase 1: proof of quality**. There is no app yet, only a script. The
-question Phase 1 answers is whether TRELLIS.2 produces a head from one portrait that
-conforms cleanly in Mesh to MetaHuman and still looks like the actor.
+Phase 1 (proof of quality) passed: a head generated from one portrait fits in Mesh to
+MetaHuman and looks like the actor. The project is now in **Phase 3: the desktop app**.
+
+## The app
+
+In the Ubuntu terminal, run `./studio.sh`, then open <http://localhost:8765> in your
+browser. See [docs/app.md](docs/app.md).
 
 ## Layout
 
 ```text
-app/                  # Tauri shell + React interface (Phase 3)
-backend/              # FastAPI server, job queue, exporters (Phase 3)
+app/                  # React interface (Tauri packaging later)
+backend/              # FastAPI server and job queue
 ai-engine/
 ├── adapters/         # one adapter per model (Phase 2+)
 ├── models/           # downloaded weights (not committed)
 └── phase1/           # Phase 1 scripts
 library/projects/     # your images and meshes (not committed)
-database/             # studio.sqlite (Phase 3)
+database/             # studio.sqlite (not committed)
 docs/
 ```
 
-## Phase 1
+## Phase 1 script
+
+The app runs this same pipeline. To use it from the command line:
 
 1. Install the engine: [docs/phase1-install.md](docs/phase1-install.md). For the portrait, follow
    [docs/shape-reference.md](docs/shape-reference.md).

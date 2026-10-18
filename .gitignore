@@ -8,6 +8,7 @@ library/projects/*
 
 database/*.sqlite
 database/*.sqlite-*
+database/logs/
 
 __pycache__/
 *.pyc

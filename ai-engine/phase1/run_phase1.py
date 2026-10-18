@@ -117,6 +117,9 @@ def main() -> None:
                         help="keep the full cut-out instead of cropping to head and neck")
     parser.add_argument("--no-metahuman", action="store_true",
                         help="skip the MetaHuman-aligned FBX (needs Blender)")
+    parser.add_argument("--smooth", type=float, default=1.0, help="smoothing for the MetaHuman FBX, 0 = off")
+    parser.add_argument("--run-dir", type=Path,
+                        help="folder for this run (must not exist yet); default: a new timestamped folder")
     args = parser.parse_args()
 
     image = args.image.resolve()
@@ -128,7 +131,7 @@ def main() -> None:
 
     actor_dir = args.library / args.project / "actors" / args.actor
     mode = "textured" if args.texture else "geometry"
-    run_dir = actor_dir / "generations" / f"{datetime.now():%Y%m%d-%H%M%S}-{mode}"
+    run_dir = args.run_dir or actor_dir / "generations" / f"{datetime.now():%Y%m%d-%H%M%S}-{mode}"
     run_dir.mkdir(parents=True)
     references = actor_dir / "references"
     references.mkdir(exist_ok=True)
@@ -141,6 +144,7 @@ def main() -> None:
         "mode": mode,
         "pipeline": args.pipeline,
         "seed": args.seed,
+        "smooth": args.smooth,
         "espalier_revision": git_revision(args.espalier),
         "started": datetime.now().isoformat(timespec="seconds"),
     }
@@ -192,7 +196,7 @@ def main() -> None:
         if not args.no_metahuman:
             print("Exporting the MetaHuman-aligned head with Blender...")
             fbx = run_dir / "head_metahuman.fbx"
-            cmd = [sys.executable, str(HERE / "export_metahuman.py"), str(glb), str(fbx)]
+            cmd = [sys.executable, str(HERE / "export_metahuman.py"), str(glb), str(fbx), "--smooth", str(args.smooth)]
             if run_logged(cmd, log) == 0 and fbx.exists():
                 record["metahuman_fbx"] = str(fbx)
             else:
