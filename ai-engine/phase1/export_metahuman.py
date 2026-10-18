@@ -35,6 +35,17 @@ BELOW_NECK = 0.12
 # The cut never goes below where the outline has widened this much past the neck (shoulders).
 SHOULDER_WIDENING = 1.35
 
+# Smoothing at --smooth 1.0. TRELLIS.2 leaves bumps and flat panels on the skull and turns eyebrows
+# and lashes into raised ridges about a centimetre wide, which MetaHuman's fit copies. Taubin
+# (shrink-free) smoothing keeps features that wide, so this is plain Laplacian smoothing: it flattens
+# the ridges into the skin around them, while the skull, being gently curved, shrinks by only about
+# a millimetre, and the alignment below is measured after smoothing. The skull, forehead and back of
+# the head get the full pass; the face below the brows a light one, so the nose, lips and jaw keep
+# their shape.
+SMOOTH_ITERATIONS = 100
+SMOOTH_LAMBDA = 0.5
+SMOOTH_FACE_WEIGHT = 0.1
+
 
 def find_blender(explicit: str | None) -> str:
     candidates = [explicit, os.environ.get("BLENDER"), shutil.which("blender"), shutil.which("blender.exe")]
@@ -58,6 +69,8 @@ def launch(argv: list[str]) -> None:
     parser.add_argument("model", help="model.glb from a Phase 1 run")
     parser.add_argument("output", help="FBX to write")
     parser.add_argument("--faces", type=int, default=TARGET_FACES)
+    parser.add_argument("--smooth", type=float, default=1.0,
+                        help="smoothing strength: 0 off, 1 removes skull bumps and brow ridges, 2 stronger")
     parser.add_argument("--blender", help="path to the Blender executable")
     args = parser.parse_args(argv)
 
@@ -67,7 +80,8 @@ def launch(argv: list[str]) -> None:
         # Windows Blender started from WSL needs Windows paths.
         paths = [subprocess.check_output(["wslpath", "-w", p], text=True).strip() for p in paths]
     script, model, output = paths
-    cmd = [blender, "-b", "--factory-startup", "--python", script, "--", model, output, str(args.faces)]
+    cmd = [blender, "-b", "--factory-startup", "--python", script, "--", model, output, str(args.faces),
+           str(args.smooth)]
     sys.exit(subprocess.run(cmd).returncode)
 
 
@@ -113,7 +127,37 @@ def nose_tip(points):
     return face[face[:, 1].argmin()], cx
 
 
-def export(model: str, output: str, faces: int) -> None:
+def smooth(points, edges, boundary, strength: float):
+    """Laplacian smoothing, full on the skull and back of the head, light on the face. Returns new points."""
+    import numpy as np
+
+    nose, _ = nose_tip(points)
+    top_z = points[:, 2].max()
+    # Height from the nose tip (0) to the top of the head (1); the brows sit around 0.35.
+    f = (points[:, 2] - nose[2]) / (top_z - nose[2])
+    weight = np.interp(f, [0.1, 0.3, 0.45], [SMOOTH_FACE_WEIGHT, 0.6, 1.0])
+    depth = np.ptp(points[:, 1])
+    weight = np.where(points[:, 1] > nose[1] + 0.55 * depth, 1.0, weight)   # behind the ears
+    weight[boundary] = 0.0                                                    # keep the neck cut in place
+
+    i, j = edges[:, 0], edges[:, 1]
+    degree = np.bincount(np.concatenate([i, j]), minlength=len(points)).astype(float)
+    degree[degree == 0] = 1.0
+
+    def laplacian(p):
+        acc = np.zeros_like(p)
+        np.add.at(acc, i, p[j])
+        np.add.at(acc, j, p[i])
+        return acc / degree[:, None] - p
+
+    p = points.copy()
+    w = weight[:, None]
+    for _ in range(round(SMOOTH_ITERATIONS * strength)):
+        p += SMOOTH_LAMBDA * w * laplacian(p)
+    return p
+
+
+def export(model: str, output: str, faces: int, smooth_strength: float = 1.0) -> None:
     """Inside Blender."""
     import bmesh
     import bpy
@@ -129,6 +173,13 @@ def export(model: str, output: str, faces: int) -> None:
     bpy.context.view_layer.objects.active = ob
     ob.select_set(True)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    # glTF splits vertices along UV seams; join them so the surface is one piece (UVs are kept per corner).
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
+    bm.to_mesh(ob.data)
+    bm.free()
 
     points = np.array([v.co[:] for v in ob.data.vertices])
     top_z = points[:, 2].max()
@@ -148,6 +199,21 @@ def export(model: str, output: str, faces: int) -> None:
         bpy.ops.object.modifier_apply(modifier=decimate.name)
     for polygon in ob.data.polygons:
         polygon.use_smooth = True
+
+    if smooth_strength > 0:
+        points = np.array([v.co[:] for v in ob.data.vertices])
+        edges = np.array([e.vertices[:] for e in ob.data.edges])
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        boundary = np.array([v.index for v in bm.verts if v.is_boundary], dtype=int)
+        bm.free()
+        smoothed = smooth(points, edges, boundary, smooth_strength)
+        ob.data.vertices.foreach_set("co", smoothed.ravel())
+        ob.data.update()
+        moved = np.linalg.norm(smoothed - points, axis=1) / np.ptp(points[:, 2])
+        print(f"Smoothing moved vertices by {100 * np.median(moved):.3f}% of the height (median), "
+              f"{100 * np.percentile(moved, 99):.3f}% (99th percentile); {len(edges)} edges, "
+              f"{len(boundary)} boundary vertices")
 
     points = np.array([v.co[:] for v in ob.data.vertices])
     top_z = points[:, 2].max()
@@ -174,5 +240,6 @@ if __name__ == "__main__":
     else:
         args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
         if len(args) < 2:
-            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces]")
-        export(args[0], args[1], int(args[2]) if len(args) > 2 else TARGET_FACES)
+            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces] [smooth]")
+        export(args[0], args[1], int(args[2]) if len(args) > 2 else TARGET_FACES,
+               float(args[3]) if len(args) > 3 else 1.0)

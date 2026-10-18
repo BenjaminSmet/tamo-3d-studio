@@ -22,7 +22,8 @@ docs/
 
 ## Phase 1
 
-1. Install the engine: [docs/phase1-install.md](docs/phase1-install.md)
+1. Install the engine: [docs/phase1-install.md](docs/phase1-install.md). For the portrait, follow
+   [docs/shape-reference.md](docs/shape-reference.md).
 2. Generate a head:
 
    ```bash
@@ -37,8 +38,9 @@ docs/
    the full log, and `run.json` with settings, timings and peak video memory.
    Nothing is ever overwritten.
 3. Bring it into MetaHuman: each run also writes `head_metahuman.fbx` (needs Blender
-   installed; `--no-metahuman` skips it). It is cut at the neck, about 200k faces, and
-   sized and placed exactly like MetaHuman's own head. Import it in Unreal with the default
+   installed; `--no-metahuman` skips it). It is cut at the neck, about 200k faces,
+   smoothed (`--smooth`, default 1.0, removes skull bumps and brow ridges), and sized and placed
+   exactly like MetaHuman's own head. Import it in Unreal with the default
    settings (Uniform Scale 1.0) and don't move it, then in the MetaHuman Character use
    **Import → From Custom Mesh** (not From Template). For an older run:
 
