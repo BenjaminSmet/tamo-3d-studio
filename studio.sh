@@ -20,7 +20,7 @@ if [ ! -f app/dist/index.html ] || [ -n "$(find app/src app/index.html app/packa
     exit 1
   fi
   echo "Building the interface..."
-  (cd app && npm install --no-audit --no-fund --loglevel=error && npm run build --silent)
+  (cd app && npm ci --no-audit --no-fund --loglevel=error && npm run build --silent)
 fi
 
 echo "Tamo 3D Studio: open http://localhost:8765 in your browser. Ctrl+C stops it."
