@@ -63,7 +63,9 @@ def crop_head_and_neck(rgba: Image.Image) -> tuple[Image.Image, bool]:
 
     head_height = neck - top
     crop_bottom = min(bottom, neck + int(BELOW_NECK * head_height))
-    cols = np.flatnonzero(alpha[top:crop_bottom].any(axis=0))
+    # Width from the head only, so wide shoulders or clothing at collar level
+    # don't make the square bigger than the head needs.
+    cols = np.flatnonzero(alpha[top:neck].any(axis=0))
     left, right = int(cols[0]), int(cols[-1]) + 1
 
     side = int(max(crop_bottom - top, right - left) * (1 + 2 * MARGIN))
