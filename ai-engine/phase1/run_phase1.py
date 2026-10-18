@@ -6,7 +6,8 @@ Each run gets its own folder under the actor's generations/ and is never overwri
         input_cutout.png background removed
         input_rgba.png   cropped to head and neck, what TRELLIS.2 sees
         model.glb        from Espalier-2
-        model.obj        same mesh, for Mesh to MetaHuman
+        model.obj        same mesh, untouched
+        head_metahuman.fbx  head and neck, sized and placed like a MetaHuman head (needs Blender)
         espalier.log     full output
         vram.csv         GPU memory every half second
         run.json         settings, timings, peak memory, result
@@ -114,6 +115,8 @@ def main() -> None:
                         help="skip background removal; the image must already have an alpha channel")
     parser.add_argument("--no-crop", action="store_true",
                         help="keep the full cut-out instead of cropping to head and neck")
+    parser.add_argument("--no-metahuman", action="store_true",
+                        help="skip the MetaHuman-aligned FBX (needs Blender)")
     args = parser.parse_args()
 
     image = args.image.resolve()
@@ -186,6 +189,14 @@ def main() -> None:
     if exit_code == 0 and glb.exists():
         glb_to_obj(glb, run_dir / "model.obj")
         record["result"] = "ok"
+        if not args.no_metahuman:
+            print("Exporting the MetaHuman-aligned head with Blender...")
+            fbx = run_dir / "head_metahuman.fbx"
+            cmd = [sys.executable, str(HERE / "export_metahuman.py"), str(glb), str(fbx)]
+            if run_logged(cmd, log) == 0 and fbx.exists():
+                record["metahuman_fbx"] = str(fbx)
+            else:
+                print(f"MetaHuman export failed; the GLB and OBJ are still there. See {log}")
     else:
         record["result"] = "failed"
     (run_dir / "run.json").write_text(json.dumps(record, indent=2))
