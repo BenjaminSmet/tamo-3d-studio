@@ -105,7 +105,7 @@ def main() -> None:
     parser.add_argument("--library", type=Path, default=REPO_ROOT / "library" / "projects")
     parser.add_argument("--espalier", type=Path, default=Path.home() / "espalier")
     parser.add_argument("--texture", action="store_true", help="also bake a texture (default: geometry only)")
-    parser.add_argument("--pipeline", default="1536_cascade", choices=["512", "1024", "1024_cascade", "1536_cascade"])
+    parser.add_argument("--pipeline", default="1024_cascade", choices=["512", "1024", "1024_cascade", "1536_cascade"])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--keep-background", action="store_true",
                         help="skip background removal; the image must already have an alpha channel")

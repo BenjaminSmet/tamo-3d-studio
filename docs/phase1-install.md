@@ -155,7 +155,9 @@ Close Unreal first, since it competes for the same video memory.
 ```
 
 The first run downloads the TRELLIS.2 and BiRefNet weights (several GB). Generation then
-takes about 5 minutes at full resolution. This first run is geometry only. When it
+takes about 3 minutes. The script defaults to `--pipeline 1024_cascade`: at 1536, TRELLIS.2
+leaves flat panels on smooth areas like the forehead and cheeks (Microsoft's own demo
+does the same), while 1024 comes out cleaner. This first run is geometry only. When it
 succeeds, run it again with `--texture`.
 
 ## If something fails
