@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tamo 3D Studio</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex; align-items: center; justify-content: center;
+        background: #141517; color: #e6e6e6; font: 14px "Inter", "Segoe UI", system-ui, sans-serif;
+      }
+      main { max-width: 460px; text-align: center; }
+      h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+      p { color: #9a9ca3; line-height: 1.5; margin: 6px 0; }
+      .bar { height: 4px; margin: 20px auto 0; width: 220px; overflow: hidden; border-radius: 2px; background: #34363b; }
+      .bar::after {
+        content: ""; display: block; height: 100%; width: 40%; background: #3d8bfd;
+        animation: slide 1.2s ease-in-out infinite;
+      }
+      @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      code { background: #1c1d20; padding: 2px 6px; border-radius: 4px; color: #e6e6e6; }
+      .problem .bar { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Tamo 3D Studio</h1>
+      <p id="status">Starting the engine in Ubuntu…</p>
+      <p id="hint"></p>
+      <div class="bar"></div>
+    </main>
+    <script>
+      // The engine server runs in Ubuntu and serves the interface; show it as soon as it answers.
+      const ENGINE = "http://127.0.0.1:8765/";
+      const SHELL_VERSION = "0.1.0";   // keep in step with src-tauri/tauri.conf.json
+      const started = Date.now();
+      const status = document.getElementById("status");
+      const hint = document.getElementById("hint");
+
+      async function check() {
+        try {
+          await fetch(ENGINE + "api/health", { mode: "no-cors", cache: "no-store" });
+          location.replace(`${ENGINE}?shell=${SHELL_VERSION}`);   // the interface offers a reinstall when this is old
+          return;
+        } catch {
+          // not up yet
+        }
+        const seconds = Math.round((Date.now() - started) / 1000);
+        if (seconds > 20) status.textContent = `Starting the engine in Ubuntu… (${seconds} s)`;
+        if (seconds > 30) hint.textContent = "The first start after an update rebuilds the interface, which takes a minute.";
+        if (seconds > 180) {
+          document.body.classList.add("problem");
+          status.textContent = "The engine didn't start.";
+          hint.innerHTML =
+            "Open the Ubuntu terminal and run <code>cd ~/tamo-3d-studio && ./studio.sh</code> to see why. " +
+            "This window connects as soon as it's running.";
+        }
+        setTimeout(check, 1000);
+      }
+      check();
+    </script>
+  </body>
+</html>

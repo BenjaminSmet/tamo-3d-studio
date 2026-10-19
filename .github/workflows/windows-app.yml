@@ -1,0 +1,31 @@
+# Builds the Windows installer for Tamo 3D Studio (desktop/). Download it from the run's
+# Artifacts. The app is a window that starts the engine in Ubuntu; see docs/app.md.
+name: Windows app
+
+on:
+  push:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/windows-app.yml"
+  workflow_dispatch:
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Build the installer
+        working-directory: desktop/src-tauri
+        run: npx --yes @tauri-apps/cli@2.12.3 build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tamo-3D-Studio-installer
+          path: desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

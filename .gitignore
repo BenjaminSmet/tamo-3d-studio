@@ -5,11 +5,17 @@ ai-engine/models/*
 # The library holds your images and meshes; back it up, don't commit it
 library/projects/*
 !library/projects/.gitkeep
+library/trash/
 
 database/*.sqlite
 database/*.sqlite-*
+database/logs/
 
 __pycache__/
 *.pyc
 .venv/
 node_modules/
+
+# Windows app build output
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
