@@ -19,6 +19,7 @@ or inside Blender directly:
 
 import argparse
 import glob
+import math
 import os
 import shutil
 import subprocess
@@ -71,6 +72,9 @@ def launch(argv: list[str]) -> None:
     parser.add_argument("--faces", type=int, default=TARGET_FACES)
     parser.add_argument("--smooth", type=float, default=1.0,
                         help="smoothing strength: 0 off, 1 removes skull bumps and brow ridges, 2 stronger")
+    parser.add_argument("--turn", type=float, default=0.0,
+                        help="degrees to turn the model about the vertical axis first, for models whose "
+                             "face does not point toward -Y after import (Pixal3D: 180)")
     parser.add_argument("--blender", help="path to the Blender executable")
     args = parser.parse_args(argv)
 
@@ -81,7 +85,7 @@ def launch(argv: list[str]) -> None:
         paths = [subprocess.check_output(["wslpath", "-w", p], text=True).strip() for p in paths]
     script, model, output = paths
     cmd = [blender, "-b", "--factory-startup", "--python", script, "--", model, output, str(args.faces),
-           str(args.smooth)]
+           str(args.smooth), str(args.turn)]
     sys.exit(subprocess.run(cmd).returncode)
 
 
@@ -157,7 +161,7 @@ def smooth(points, edges, boundary, strength: float):
     return p
 
 
-def export(model: str, output: str, faces: int, smooth_strength: float = 1.0) -> None:
+def export(model: str, output: str, faces: int, smooth_strength: float = 1.0, turn: float = 0.0) -> None:
     """Inside Blender."""
     import bmesh
     import bpy
@@ -173,6 +177,9 @@ def export(model: str, output: str, faces: int, smooth_strength: float = 1.0) ->
     bpy.context.view_layer.objects.active = ob
     ob.select_set(True)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    if turn:
+        ob.rotation_euler = (0.0, 0.0, math.radians(turn))
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
     # glTF splits vertices along UV seams; join them so the surface is one piece (UVs are kept per corner).
     bm = bmesh.new()
@@ -240,6 +247,6 @@ if __name__ == "__main__":
     else:
         args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
         if len(args) < 2:
-            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces] [smooth]")
+            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces] [smooth] [turn]")
         export(args[0], args[1], int(args[2]) if len(args) > 2 else TARGET_FACES,
-               float(args[3]) if len(args) > 3 else 1.0)
+               float(args[3]) if len(args) > 3 else 1.0, float(args[4]) if len(args) > 4 else 0.0)

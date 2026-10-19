@@ -42,3 +42,10 @@ the head's height so the head is the same size in every view. The cameras form P
 standard orbit (20 degree field of view, eye level, front camera first); `views/` in the run
 folder holds exactly what Pixal3D saw, with `transforms.json`. The run folder is the same as
 Phase 1's, including `head_metahuman.fbx`.
+
+A run takes about 6 minutes, most of it loading the model, and needs about 11 GB of GPU memory
+(TRELLIS.2 needs about 7 GB), so keep Unreal closed. Pixal3D's own background remover
+(RMBG-2.0) is gated and licensed for non-commercial use only, so the script cuts the views out
+itself and always runs Pixal3D with `--no-rembg`. Pixal3D's `model.glb` faces the opposite way
+from TRELLIS.2's; the MetaHuman export turns it round, so `head_metahuman.fbx` faces the usual
+way.

@@ -32,6 +32,9 @@ from frame_views import FOV_DEG, facing, head_box, write_views  # noqa: E402
 # Azimuth for a turned view whose face points to the left of the image (a camera on the
 # actor's left); a face pointing right is the mirror.
 TURN = {"side": 90.0, "three_quarter": 45.0}
+# Pixal3D's model.glb faces the other way from TRELLIS.2's (+Y in Blender, not -Y), so the
+# MetaHuman export turns it round first.
+PIXAL3D_TURN = 180.0
 
 
 def cut_out(image: Path, out: Path, log: Path) -> Image.Image:
@@ -132,7 +135,8 @@ def main() -> None:
         if not args.no_metahuman:
             print("Exporting the MetaHuman-aligned head with Blender...")
             fbx = run_dir / "head_metahuman.fbx"
-            cmd = [sys.executable, str(PHASE1 / "export_metahuman.py"), str(glb), str(fbx), "--smooth", str(args.smooth)]
+            cmd = [sys.executable, str(PHASE1 / "export_metahuman.py"), str(glb), str(fbx), "--smooth", str(args.smooth),
+                   "--turn", str(PIXAL3D_TURN)]
             if run_logged(cmd, log) == 0 and fbx.exists():
                 record["metahuman_fbx"] = str(fbx)
             else:
