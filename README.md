@@ -7,13 +7,15 @@ MetaHuman and looks like the actor. The project is now in **Phase 3: the desktop
 
 ## The app
 
-In the Ubuntu terminal, run `./studio.sh`, then open <http://localhost:8765> in your
-browser. See [docs/app.md](docs/app.md).
+Install the Windows app (built by GitHub, see [docs/app.md](docs/app.md#install-the-windows-app))
+and open **Tamo 3D Studio** from the Start menu; it starts the engine in Ubuntu by itself.
+Without it: run `./studio.sh` in the Ubuntu terminal and open <http://localhost:8765>.
 
 ## Layout
 
 ```text
-app/                  # React interface (Tauri packaging later)
+app/                  # React interface
+desktop/              # Windows app (Tauri) that starts the engine and shows the interface
 backend/              # FastAPI server and job queue
 ai-engine/
 ├── adapters/         # one adapter per model (Phase 2+)

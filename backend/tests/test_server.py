@@ -228,3 +228,28 @@ def test_delete_refuses_while_a_job_runs_and_cancel_trashes_the_partial_run(clie
     [partial] = (library.parent / "trash").glob("*/tamo/actors/nia_okafor/generations/*")
     assert partial.name == Path(job["run_dir"]).name
     assert client.delete(f"/api/actors/{actor['id']}").status_code == 200
+
+
+def test_update_pulls_then_restarts_and_waits_for_running_jobs(client, monkeypatch):
+    from tamo_server import updates
+
+    calls = []
+    monkeypatch.setattr(updates, "pull", lambda: calls.append("pull") or {"from": "aaa", "commit": "bbb"})
+    monkeypatch.setattr(updates, "restart_soon", lambda stop: calls.append("restart"))
+    assert {"commit", "shell_version"} <= set(client.get("/api/health").json())
+
+    monkeypatch.setenv("FAKE_ENGINE", "slow")
+    _, actor, reference = make_actor(client)
+    job = client.post(f"/api/actors/{actor['id']}/generations", json={"reference_id": reference["id"]}).json()
+    assert client.post("/api/update").status_code == 409 and calls == []
+    client.post(f"/api/jobs/{job['id']}/cancel")
+    wait_for(client, job["id"])
+
+    assert client.post("/api/update").json()["commit"] == "bbb"
+    assert calls == ["pull", "restart"]
+
+    def offline():
+        raise updates.UpdateError("Could not resolve host: github.com")
+    monkeypatch.setattr(updates, "pull", offline)
+    response = client.post("/api/update")
+    assert response.status_code == 502 and "github.com" in response.json()["detail"]

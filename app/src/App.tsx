@@ -3,6 +3,7 @@ import { api, type Actor, type ActorSummary, type Health, type Job, type Project
 import { Inspector } from "./Inspector";
 import { Sidebar } from "./Sidebar";
 import { Studio } from "./Studio";
+import { Updates } from "./Updates";
 
 export type Selection = { kind: "reference"; id: number } | { kind: "generation"; id: number } | null;
 
@@ -99,13 +100,16 @@ export default function App() {
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-edge bg-panel px-4">
         <span className="font-semibold tracking-wide">Tamo 3D Studio</span>
         <span className="text-neutral-500">Face Studio</span>
-        <span className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              health == null ? "bg-neutral-600" : health.engine_found ? "bg-emerald-500" : "bg-amber-500"
-            }`}
-          />
-          {health == null ? "Connecting…" : health.engine_found ? "Engine ready" : "Engine not found"}
+        <span className="ml-auto flex items-center gap-4 text-xs text-neutral-400">
+          <Updates health={health} />
+          <span className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                health == null ? "bg-neutral-600" : health.engine_found ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+            {health == null ? "Connecting…" : health.engine_found ? "Engine ready" : "Engine not found"}
+          </span>
         </span>
       </header>
 

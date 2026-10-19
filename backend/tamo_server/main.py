@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from .config import Settings
 from .db import Database, generation_view, job_view, now
 from .engine import Trellis2Engine
+from . import updates
 from .jobs import JobQueue
 from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, move_to_trash,
                       save_reference, scan, slugify, trash_dir, windows_path)
@@ -105,7 +106,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "library": str(settings.library),
             "library_windows_path": windows_path(str(settings.library)),
             "trash_windows_path": windows_path(str(trash_dir(settings.library))),
+            **updates.current(),
         }
+
+    @app.post("/api/update/check")
+    def check_for_update():
+        try:
+            return updates.check()
+        except updates.UpdateError as error:
+            raise HTTPException(502, f"Couldn't check GitHub for updates: {error}")
+
+    @app.post("/api/update")
+    def update():
+        if db.one("SELECT id FROM jobs WHERE status IN ('queued', 'running')"):
+            raise HTTPException(409, "A generation is queued or running. Let it finish, or cancel it, then update.")
+        try:
+            result = updates.pull()
+        except updates.UpdateError as error:
+            raise HTTPException(502, f"Couldn't update: {error}")
+        updates.restart_soon(queue.stop)
+        return result
 
     @app.post("/api/rescan")
     def rescan():

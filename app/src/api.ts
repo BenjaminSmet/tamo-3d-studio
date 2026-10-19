@@ -95,7 +95,12 @@ export type Health = {
   library: string;
   library_windows_path: string | null;
   trash_windows_path: string | null;
+  commit: string | null;
+  date: string | null;
+  shell_version: string | null;
 };
+
+export type UpdateCheck = { commit: string | null; behind: number; changes: string[] };
 
 export class ApiError extends Error {}
 
@@ -154,6 +159,8 @@ export const api = {
   deleteActor: (actorId: number) => request(`/api/actors/${actorId}`, { method: "DELETE" }),
   deleteReference: (referenceId: number) => request(`/api/references/${referenceId}`, { method: "DELETE" }),
   deleteGeneration: (generationId: number) => request(`/api/generations/${generationId}`, { method: "DELETE" }),
+  checkUpdate: () => request<UpdateCheck>("/api/update/check", { method: "POST" }),
+  update: () => request<{ from: string | null; commit: string | null }>("/api/update", { method: "POST" }),
   rescan: () => request<{ added_generations: number }>("/api/rescan", { method: "POST" }),
 };
 
