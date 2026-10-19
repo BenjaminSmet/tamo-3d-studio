@@ -13,8 +13,14 @@ Its weights take about 43 GB.
 git clone <espalier remote> ~/espalier-pixal3d
 cd ~/espalier-pixal3d
 export LIBRARY_PATH=/usr/lib/wsl/lib:$LIBRARY_PATH
+export CUDA_HOME=/usr/local/cuda-12.8
+export MAX_JOBS=4
 ./install.sh --pixal3d
 ```
+
+`MAX_JOBS=4` keeps the CUDA extension build within 16 GB of RAM: with ninja installed it
+otherwise starts one compile per CPU thread and runs out of memory. The build takes about
+20 minutes.
 
 ## Photos
 
