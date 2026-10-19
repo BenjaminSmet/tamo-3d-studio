@@ -15,6 +15,11 @@ body,
   margin: 0;
 }
 
+button:not(:disabled),
+select {
+  cursor: pointer;
+}
+
 body {
   background: #141517;
   color: #e6e6e6;

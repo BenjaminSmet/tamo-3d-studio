@@ -19,8 +19,8 @@ from .config import Settings
 from .db import Database, generation_view, job_view, now
 from .engine import Trellis2Engine
 from .jobs import JobQueue
-from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, save_reference, scan,
-                      slugify, windows_path)
+from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, move_to_trash,
+                      save_reference, scan, slugify, trash_dir, windows_path)
 
 # Files of a run the interface may fetch, and nothing else from the disk.
 RUN_FILES = {
@@ -81,6 +81,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "No such actor.")
         return actor
 
+    def refuse_if_busy(where: str, params: tuple, what: str) -> None:
+        if db.one(f"SELECT j.id FROM jobs j JOIN actors a ON a.id = j.actor_id "
+                  f"WHERE j.status IN ('queued', 'running') AND {where}", params):
+            raise HTTPException(409, f"{what} has a generation queued or running. Cancel it first.")
+
     def generation_out(generation: dict) -> dict:
         view = generation_view(generation)
         run_dir = Path(view["run_dir"])
@@ -99,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "engine_found": settings.engine_python.is_file() and settings.engine_script.is_file(),
             "library": str(settings.library),
             "library_windows_path": windows_path(str(settings.library)),
+            "trash_windows_path": windows_path(str(trash_dir(settings.library))),
         }
 
     @app.post("/api/rescan")
@@ -254,6 +260,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "That generation doesn't belong to this actor.")
         db.update("actors", actor_id, preferred_generation_id=generation_id)
         return actor_or_404(actor_id)
+
+    # Deleting moves files to library/trash and forgets them here; nothing is erased from the disk.
+    # Jobs that used a deleted image go too (each version keeps its own settings and input in run.json).
+
+    @app.delete("/api/generations/{generation_id}")
+    def delete_generation(generation_id: int):
+        found = db.one("SELECT * FROM generations WHERE id = ?", (generation_id,))
+        if not found:
+            raise HTTPException(404, "No such generation.")
+        db.transaction([
+            ("UPDATE actors SET preferred_generation_id = NULL WHERE preferred_generation_id = ?", (generation_id,)),
+            ("DELETE FROM generations WHERE id = ?", (generation_id,)),
+        ])
+        move_to_trash(settings.library, Path(found["run_dir"]))
+        return {"deleted": generation_id}
+
+    @app.delete("/api/references/{reference_id}")
+    def delete_reference(reference_id: int):
+        found = db.one("SELECT * FROM reference_images WHERE id = ?", (reference_id,))
+        if not found:
+            raise HTTPException(404, "No such reference image.")
+        refuse_if_busy("j.reference_id = ?", (reference_id,), "This image")
+        db.transaction([
+            ("UPDATE generations SET job_id = NULL WHERE job_id IN (SELECT id FROM jobs WHERE reference_id = ?)",
+             (reference_id,)),
+            ("DELETE FROM jobs WHERE reference_id = ?", (reference_id,)),
+            ("DELETE FROM reference_images WHERE id = ?", (reference_id,)),
+        ])
+        move_to_trash(settings.library, Path(found["path"]))
+        return {"deleted": reference_id}
+
+    def forget_actors(where: str, params: tuple) -> list[tuple[str, tuple]]:
+        actors_sql = f"SELECT id FROM actors WHERE {where}"
+        return [
+            (f"DELETE FROM generations WHERE actor_id IN ({actors_sql})", params),
+            (f"DELETE FROM jobs WHERE actor_id IN ({actors_sql})", params),
+            (f"DELETE FROM reference_images WHERE actor_id IN ({actors_sql})", params),
+            (f"DELETE FROM actors WHERE {where}", params),
+        ]
+
+    @app.delete("/api/actors/{actor_id}")
+    def delete_actor(actor_id: int):
+        found = actor_or_404(actor_id)
+        refuse_if_busy("a.id = ?", (actor_id,), "This actor")
+        db.transaction(forget_actors("id = ?", (actor_id,)))
+        move_to_trash(settings.library, actor_dir(settings.library, found["project_slug"], found["slug"]))
+        return {"deleted": actor_id}
+
+    @app.delete("/api/projects/{project_id}")
+    def delete_project(project_id: int):
+        found = project_or_404(project_id)
+        refuse_if_busy("a.project_id = ?", (project_id,), "An actor in this project")
+        db.transaction([*forget_actors("project_id = ?", (project_id,)),
+                        ("DELETE FROM projects WHERE id = ?", (project_id,))])
+        move_to_trash(settings.library, settings.library / found["slug"])
+        return {"deleted": project_id}
 
     if settings.app_dist.is_dir():
         app.mount("/", StaticFiles(directory=settings.app_dist, html=True), name="app")

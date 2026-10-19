@@ -2,7 +2,7 @@
 
 Jobs survive restarts: anything that was running when the server stopped goes back
 to the queue and starts again in a fresh run folder. Cancelling stops the whole
-process group, Espalier-2 included. A failed job records the end of its log and never
+process group, Espalier-2 included, and moves the half-finished folder to the trash. A failed job records the end of its log and never
 takes the server down.
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .db import Database, now
 from .engine import Progress, Trellis2Engine
-from .library import new_run_dir
+from .library import move_to_trash, new_run_dir
 
 LOG_TAIL_LINES = 40
 
@@ -53,6 +53,7 @@ class JobQueue:
     def submit(self, actor_id: int, reference_id: int, settings: dict) -> int:
         job_id = self.db.insert("jobs", actor_id=actor_id, reference_id=reference_id, settings=json.dumps(settings),
                                 status="queued", stage="Waiting", progress=0, created=now())
+        self.log_path(job_id).unlink(missing_ok=True)   # ids of deleted jobs get reused
         self._wake.set()
         return job_id
 
@@ -144,7 +145,8 @@ class JobQueue:
             self._finish_cancelled(job_id)
             return
         if self._stop.is_set():
-            # The server is shutting down mid-run; start this job again next time.
+            # The server is shutting down mid-run; start this job again next time, in a fresh folder.
+            move_to_trash(self.library, run_dir)
             self.db.update("jobs", job_id, status="queued", stage="Waiting (restarted)", progress=0)
             return
 
@@ -160,6 +162,9 @@ class JobQueue:
 
     def _finish_cancelled(self, job_id: int) -> None:
         self._cancelled.discard(job_id)
+        job = self.db.one("SELECT run_dir FROM jobs WHERE id = ?", (job_id,))
+        if job and job["run_dir"]:
+            move_to_trash(self.library, Path(job["run_dir"]))   # half-finished; not a version
         self.db.update("jobs", job_id, status="cancelled", stage="Cancelled", finished=now())
 
     @staticmethod

@@ -5,6 +5,7 @@ ai-engine/models/*
 # The library holds your images and meshes; back it up, don't commit it
 library/projects/*
 !library/projects/.gitkeep
+library/trash/
 
 database/*.sqlite
 database/*.sqlite-*

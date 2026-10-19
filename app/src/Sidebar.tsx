@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, referenceImageUrl, type ActorSummary, type Job, type Project } from "./api";
-import { Button, ProgressBar, Section } from "./ui";
+import { Button, ConfirmDelete, ProgressBar, Section } from "./ui";
 
 type Props = {
   projects: Project[];
@@ -11,6 +11,7 @@ type Props = {
   actorId: number | null;
   onActor: (id: number) => void;
   onActorCreated: (actor: ActorSummary) => void;
+  onProjectDeleted: () => void;
   jobs: Job[];
   onError: (e: unknown) => void;
 };
@@ -72,6 +73,14 @@ export function Sidebar(props: Props) {
             </option>
           ))}
         </select>
+        {projectId != null && !addingProject && (
+          <div className="mt-2 flex justify-end">
+            <ConfirmDelete
+              label="Delete project"
+              onConfirm={() => api.deleteProject(projectId).then(props.onProjectDeleted).catch(onError)}
+            />
+          </div>
+        )}
         {(addingProject || projects.length === 0) && (
           <NameForm
             placeholder="Project name"

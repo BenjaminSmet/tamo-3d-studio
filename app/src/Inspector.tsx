@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, DEFAULT_SETTINGS, generationFileUrl, VIEWS, type Actor, type Settings, type View } from "./api";
 import type { Selection } from "./App";
 import { shownGeneration } from "./Studio";
-import { Button, Field, Section, formatDate, formatSeconds } from "./ui";
+import { Button, ConfirmDelete, Field, Section, formatDate, formatSeconds } from "./ui";
 
 type Props = {
   actor: Actor | null;
@@ -180,6 +180,20 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError }: Pr
             </p>
           )}
           <CopyPath path={reference.windows_path} />
+          <div className="mt-3 flex justify-end">
+            <ConfirmDelete
+              label="Delete image"
+              onConfirm={() =>
+                api
+                  .deleteReference(reference.id)
+                  .then(() => {
+                    onSelect(null);
+                    onChanged();
+                  })
+                  .catch(onError)
+              }
+            />
+          </div>
         </Section>
       )}
 
@@ -270,6 +284,20 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError }: Pr
             </pre>
           )}
           <CopyPath path={generation.windows_path} />
+          <div className="mt-3 flex justify-end">
+            <ConfirmDelete
+              label="Delete version"
+              onConfirm={() =>
+                api
+                  .deleteGeneration(generation.id)
+                  .then(() => {
+                    onSelect(null);
+                    onChanged();
+                  })
+                  .catch(onError)
+              }
+            />
+          </div>
         </Section>
       )}
     </aside>

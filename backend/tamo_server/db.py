@@ -80,6 +80,12 @@ class Database:
         with self._lock, self._conn:
             return self._conn.execute(sql, params)
 
+    def transaction(self, statements: list[tuple[str, tuple]]) -> None:
+        """Runs several statements as one change: all of them happen, or none."""
+        with self._lock, self._conn:
+            for sql, params in statements:
+                self._conn.execute(sql, params)
+
     def one(self, sql: str, params=()) -> dict | None:
         with self._lock:
             row = self._conn.execute(sql, params).fetchone()

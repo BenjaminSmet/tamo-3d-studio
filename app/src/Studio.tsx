@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { api, generationFileUrl, referenceImageUrl, VIEWS, type Actor, type Generation, type Job, type View } from "./api";
 import type { Selection } from "./App";
 import { HeadViewer } from "./HeadViewer";
-import { ProgressBar, formatDate } from "./ui";
+import { ConfirmDelete, ProgressBar, formatDate } from "./ui";
 
 type Props = {
   actor: Actor;
@@ -10,6 +10,7 @@ type Props = {
   selection: Selection;
   onSelect: (selection: Selection) => void;
   onChanged: () => void;
+  onDeleted: () => void;
   onError: (e: unknown) => void;
 };
 
@@ -24,7 +25,7 @@ export function shownGeneration(actor: Actor, selection: Selection): Generation 
   );
 }
 
-export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }: Props) {
+export function Studio({ actor, jobs, selection, onSelect, onChanged, onDeleted, onError }: Props) {
   const [shading, setShading] = useState<"texture" | "clay">("texture");
   const [uploadView, setUploadView] = useState<View>("front");
   const [dragging, setDragging] = useState(false);
@@ -32,7 +33,10 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }:
   const fileInput = useRef<HTMLInputElement>(null);
 
   const shown = shownGeneration(actor, selection);
-  const modelUrl = shown?.files.includes("model.glb") ? generationFileUrl(shown.id, "model.glb") : null;
+  // The run folder in the URL: ids of deleted versions get reused, and the viewer and browser cache by URL.
+  const modelUrl = shown?.files.includes("model.glb")
+    ? `${generationFileUrl(shown.id, "model.glb")}?run=${encodeURIComponent(shown.run_dir)}`
+    : null;
   const running = jobs.find((j) => j.status === "running") ?? jobs[0];
 
   const upload = async (files: FileList | null) => {
@@ -57,6 +61,10 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }:
         <span className="text-neutral-500">
           {actor.generations.length} {actor.generations.length === 1 ? "version" : "versions"}
         </span>
+        <ConfirmDelete
+          label="Delete actor"
+          onConfirm={() => api.deleteActor(actor.id).then(onDeleted).catch(onError)}
+        />
         <div className="ml-auto flex overflow-hidden rounded border border-edge text-xs">
           {(["texture", "clay"] as const).map((mode) => (
             <button
@@ -130,7 +138,7 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }:
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         <HeadViewer url={modelUrl} shading={shading} />
         {running && (
           <div className="absolute left-4 right-4 top-4 rounded border border-edge bg-panel/90 p-3 md:left-auto md:w-80">
@@ -143,8 +151,8 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }:
         )}
       </div>
 
-      {/* Every run is a version; nothing is ever overwritten. */}
-      <div className="flex gap-2 overflow-x-auto border-t border-edge px-4 py-2">
+      {/* Every run is a version, newest first; nothing is ever overwritten. Wraps so none hide off to the side. */}
+      <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto border-t border-edge px-4 py-2">
         {actor.generations.length === 0 && (
           <span className="py-1 text-neutral-500">No versions yet. Add a front image and press Generate.</span>
         )}
@@ -152,6 +160,7 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onError }:
           <button
             key={g.id}
             onClick={() => onSelect({ kind: "generation", id: g.id })}
+            title="Show this version"
             className={`shrink-0 rounded border px-3 py-1.5 text-left text-xs ${
               shown?.id === g.id ? "border-accent bg-accent/10" : "border-edge hover:bg-panel-raised"
             }`}

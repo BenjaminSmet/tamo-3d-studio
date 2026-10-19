@@ -94,6 +94,7 @@ export type Health = {
   engine_found: boolean;
   library: string;
   library_windows_path: string | null;
+  trash_windows_path: string | null;
 };
 
 export class ApiError extends Error {}
@@ -148,6 +149,11 @@ export const api = {
   cancelJob: (jobId: number) => request<Job>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
   setPreferred: (actorId: number, generationId: number) =>
     request<ActorSummary>(`/api/actors/${actorId}/preferred`, form({ generation_id: String(generationId) })),
+  // Deleting moves the files to the library's trash folder; nothing is erased.
+  deleteProject: (projectId: number) => request(`/api/projects/${projectId}`, { method: "DELETE" }),
+  deleteActor: (actorId: number) => request(`/api/actors/${actorId}`, { method: "DELETE" }),
+  deleteReference: (referenceId: number) => request(`/api/references/${referenceId}`, { method: "DELETE" }),
+  deleteGeneration: (generationId: number) => request(`/api/generations/${generationId}`, { method: "DELETE" }),
   rescan: () => request<{ added_generations: number }>("/api/rescan", { method: "POST" }),
 };
 

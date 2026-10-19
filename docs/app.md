@@ -42,6 +42,11 @@ Your existing runs under `library/projects/` show up automatically as versions.
    In Unreal, import it with default settings, then MetaHuman Character → Import →
    From Custom Mesh.
 5. Every run is a new version; mark the best one as preferred.
+6. To delete an actor, an image or a version, use its **Delete** link and confirm. Nothing
+   is erased: it moves to `library/trash/<date-time>/` with the same folders
+   (`\\wsl.localhost\Ubuntu-24.04\home\ben\tamo-3d-studio\library\trash` in Explorer).
+   To undo, move it back and restart the app. Empty the trash yourself when you like.
+   Anything with a generation queued or running can't be deleted until you cancel it.
 
 Keep Unreal closed while a head is generating; they share the GPU.
 

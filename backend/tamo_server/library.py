@@ -2,6 +2,7 @@
 
     library/projects/<project>/actors/<actor>/references/
                                              /generations/<timestamp>-<mode>/
+    library/trash/<timestamp>/<project>/...   deleted items, same layout, until you empty it
 """
 
 import io
@@ -45,6 +46,32 @@ def new_run_dir(library: Path, project_slug: str, actor_slug: str, mode: str) ->
         candidate = base.with_name(f"{base.name}-{n}")
         n += 1
     return candidate
+
+
+def trash_dir(library: Path) -> Path:
+    """Next to library/projects, so scanning the projects never brings deleted items back."""
+    return library.parent / "trash"
+
+
+def move_to_trash(library: Path, path: Path) -> Path | None:
+    """Moves a file or folder into library/trash/<timestamp>/, keeping its place in the library.
+
+    Nothing is erased: to undo, move it back and press Rescan. Returns where it went, or None if it was already gone.
+    """
+    if not path.exists():
+        return None
+    batch = trash_dir(library) / f"{datetime.now():%Y%m%d-%H%M%S}"
+    try:
+        target = batch / path.resolve().relative_to(library.resolve())
+    except ValueError:   # outside the library (shouldn't happen); keep just its name
+        target = batch / path.name
+    n = 2
+    while target.exists():
+        target = target.with_name(f"{target.name}-{n}")
+        n += 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), str(target))
+    return target
 
 
 class InvalidImage(ValueError):

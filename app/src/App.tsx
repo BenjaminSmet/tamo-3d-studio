@@ -128,6 +128,10 @@ export default function App() {
           actorId={actorId}
           onActor={setActorId}
           onActorCreated={(a) => loadActors().then(() => setActorId(a.id)).catch(report)}
+          onProjectDeleted={() => {
+            setProjectId(null);
+            loadProjects().catch(report);
+          }}
           jobs={jobs}
           onError={report}
         />
@@ -139,6 +143,10 @@ export default function App() {
               selection={selection}
               onSelect={setSelection}
               onChanged={refreshActor}
+              onDeleted={() => {
+                setActorId(null);
+                loadActors().catch(report);
+              }}
               onError={report}
             />
           ) : (

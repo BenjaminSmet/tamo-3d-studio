@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 export function Button({
   variant = "plain",
@@ -15,6 +15,46 @@ export function Button({
       className={`rounded px-3 py-1.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${className}`}
       {...props}
     />
+  );
+}
+
+// A delete link that asks once before acting: the first click turns it into "Delete? Yes / No".
+export function ConfirmDelete({ label, onConfirm }: { label: string; onConfirm: () => Promise<unknown> }) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!asking) return;
+    const timer = setTimeout(() => setAsking(false), 5000);
+    return () => clearTimeout(timer);
+  }, [asking]);
+  if (!asking)
+    return (
+      <button className="text-xs text-neutral-400 hover:text-red-300" onClick={() => setAsking(true)}>
+        {label}
+      </button>
+    );
+  return (
+    <span className="flex items-center gap-2 text-xs">
+      <span className="text-red-300">{label}?</span>
+      <button
+        disabled={busy}
+        className="rounded bg-red-900/70 px-2 py-0.5 text-red-100 hover:bg-red-800 disabled:opacity-40"
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onConfirm();
+          } finally {
+            setBusy(false);
+            setAsking(false);
+          }
+        }}
+      >
+        Yes
+      </button>
+      <button className="text-neutral-400 hover:text-white" onClick={() => setAsking(false)}>
+        No
+      </button>
+    </span>
   );
 }
 

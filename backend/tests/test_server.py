@@ -172,3 +172,59 @@ def test_restart_requeues_interrupted_jobs(tmp_path, library, monkeypatch):
     with TestClient(create_app(settings)) as client:
         done = wait_for(client, job["id"])
         assert done["status"] == "done" and done["attempts"] == 2
+
+
+def trashed(library):
+    trash = library.parent / "trash"
+    return sorted(p.relative_to(trash).as_posix().split("/", 1)[1] for p in trash.glob("*/**/*") if p.is_file())
+
+
+def test_delete_version_image_and_actor_moves_them_to_the_trash(client, library):
+    project, actor, reference = make_actor(client)
+    job = client.post(f"/api/actors/{actor['id']}/generations", json={"reference_id": reference["id"]}).json()
+    wait_for(client, job["id"])
+    [generation] = client.get(f"/api/actors/{actor['id']}").json()["generations"]
+    client.post(f"/api/actors/{actor['id']}/preferred", data={"generation_id": generation["id"]})
+    run_name = Path(generation["run_dir"]).name
+
+    assert client.delete(f"/api/generations/{generation['id']}").status_code == 200
+    details = client.get(f"/api/actors/{actor['id']}").json()
+    assert details["generations"] == [] and details["preferred_generation_id"] is None
+    assert not Path(generation["run_dir"]).exists()
+    assert f"tamo/actors/nia_okafor/generations/{run_name}/model.glb" in trashed(library)
+    assert client.post("/api/rescan").json() == {"added_generations": 0}   # the trash isn't scanned back in
+
+    # The image's jobs go with it; the image itself goes to the trash.
+    assert client.delete(f"/api/references/{reference['id']}").status_code == 200
+    details = client.get(f"/api/actors/{actor['id']}").json()
+    assert details["references"] == [] and details["jobs"] == []
+    assert any(p.endswith("Nia_front.png") for p in trashed(library))
+
+    assert client.delete(f"/api/actors/{actor['id']}").status_code == 200
+    assert client.get(f"/api/actors/{actor['id']}").status_code == 404
+    assert not (library / "tamo" / "actors" / "nia_okafor").exists()
+    # The same name can be used again afterwards.
+    assert client.post(f"/api/projects/{project['id']}/actors", json={"name": "Nia Okafor"}).status_code == 201
+    assert client.delete(f"/api/projects/{project['id']}").status_code == 200
+    assert client.get("/api/projects").json() == []
+    assert client.delete(f"/api/projects/{project['id']}").status_code == 404
+
+
+def test_delete_refuses_while_a_job_runs_and_cancel_trashes_the_partial_run(client, library, monkeypatch):
+    monkeypatch.setenv("FAKE_ENGINE", "slow")
+    project, actor, reference = make_actor(client)
+    job = client.post(f"/api/actors/{actor['id']}/generations", json={"reference_id": reference["id"]}).json()
+    job = wait_for(client, job["id"], statuses=("running",))
+    deadline = time.time() + 10
+    while not Path(job["run_dir"]).exists() and time.time() < deadline:
+        time.sleep(0.05)
+    assert Path(job["run_dir"]).exists()
+    for path in (f"/api/references/{reference['id']}", f"/api/actors/{actor['id']}", f"/api/projects/{project['id']}"):
+        response = client.delete(path)
+        assert response.status_code == 409 and "Cancel it first" in response.json()["detail"]
+    client.post(f"/api/jobs/{job['id']}/cancel")
+    wait_for(client, job["id"])
+    assert not Path(job["run_dir"]).exists()
+    [partial] = (library.parent / "trash").glob("*/tamo/actors/nia_okafor/generations/*")
+    assert partial.name == Path(job["run_dir"]).name
+    assert client.delete(f"/api/actors/{actor['id']}").status_code == 200
