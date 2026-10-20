@@ -159,12 +159,32 @@ def frame(rgba: Image.Image, box: dict) -> Image.Image:
     return cropped.resize((SIZE, SIZE), Image.LANCZOS)
 
 
+def cut_off_edges(rgba: Image.Image, box: dict) -> list[str]:
+    """Which edges of the photo cut through the head (above the chin). Pixal3D takes such an
+    edge as the end of the head, so a skull cut off at the back comes out squeezed and tall."""
+    alpha = np.asarray(rgba.getchannel("A")) >= ALPHA_THRESHOLD
+    head = alpha[box["top"]:box["chin"]]
+    edges = []
+    if alpha[0].any():
+        edges.append("top")
+    if head[:, 0].sum() > 0.05 * len(head):
+        edges.append("left")
+    if head[:, -1].sum() > 0.05 * len(head):
+        edges.append("right")
+    return edges
+
+
 def write_views(views: list[tuple[str, Image.Image, float]], out_dir: Path, fov_deg: float = FOV_DEG) -> dict:
     """views: (name, RGBA cut-out, azimuth), front first. Writes the images and transforms.json."""
     out_dir.mkdir(parents=True, exist_ok=True)
     frames, report = [], []
     for i, (name, rgba, azimuth) in enumerate(views):
         box = head_box(rgba, None if azimuth == 0 else ("left" if azimuth > 0 else "right"))
+        edges = cut_off_edges(rgba, box)
+        if edges:
+            raise ValueError(f"The {name.replace('_', '-')} photo cuts off the head at the {' and '.join(edges)} "
+                             "edge. Use a photo that shows the whole head, back of the skull included, "
+                             "with some space around it.")
         file_name = f"view{i:02d}_{name}.png"
         frame(rgba, box).save(out_dir / file_name)
         frames.append({"file_path": file_name, "name": name, "transform_matrix": camera_to_world(azimuth)})

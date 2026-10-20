@@ -107,8 +107,8 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
     setReferenceId(fronts[0]?.id ?? null);
     setSideId(sides[0]?.id ?? null);
     setThreeQuarterId(threeQuarters[0]?.id ?? null);
-    // Multi-view gives the better shape (MetaHuman only takes the shape), so it's the default when it can run.
-    setModel(canMultiview ? "pixal3d" : "trellis2");
+    // Front only is the default: multi-view only does better with uncropped turned views from the same shoot.
+    setModel("trellis2");
     // Reset when switching actors or when new images arrive.
   }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -139,7 +139,7 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
           {!canMultiview && (
             <p className="mb-1 text-xs text-neutral-500">
               {multiviewFound
-                ? "Add a Side or Three-quarter image for multi-view: it follows the profile more closely."
+                ? "Add a Side or Three-quarter image for multi-view."
                 : "Multi-view needs Pixal3D installed (see docs/multiview.md)."}
             </p>
           )}
@@ -221,7 +221,9 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
           </Button>
           <p className="mt-2 text-xs text-neutral-500">
             Keep Unreal closed while it runs; they share the GPU.
-            {multiview && " Multi-view takes about 5 minutes and 11 GB of GPU memory. Views from one shoot work best."}
+            {multiview &&
+              " Multi-view takes about 5 minutes and 11 GB of GPU memory. Use views from the same shoot as the front," +
+                " each showing the whole head, back of the skull included."}
           </p>
         </>
       )}
