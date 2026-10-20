@@ -166,7 +166,7 @@ def export(model: str, output: str, faces: int, smooth_strength: float = 1.0, tu
     import bmesh
     import bpy
     import numpy as np
-    from mathutils import Vector
+    from mathutils import Matrix, Vector
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=model)   # glTF Y up becomes Blender Z up, face toward -Y
@@ -174,12 +174,18 @@ def export(model: str, output: str, faces: int, smooth_strength: float = 1.0, tu
     if len(meshes) != 1:
         sys.exit(f"Expected one mesh in {model}, found {len(meshes)}")
     ob = meshes[0]
+    # Bake the world transform, parents included (Pixal3D's GLB has a node above the mesh), into the
+    # mesh data, so everything below works in world coordinates.
+    ob.data.transform(ob.matrix_world)
+    ob.parent = None
+    ob.matrix_world = Matrix.Identity(4)
+    for other in [o for o in bpy.context.scene.objects if o is not ob]:
+        bpy.data.objects.remove(other)
+    if turn:
+        ob.data.transform(Matrix.Rotation(math.radians(turn), 4, "Z"))
+    ob.data.update()
     bpy.context.view_layer.objects.active = ob
     ob.select_set(True)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    if turn:
-        ob.rotation_euler = (0.0, 0.0, math.radians(turn))
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
     # glTF splits vertices along UV seams; join them so the surface is one piece (UVs are kept per corner).
     bm = bmesh.new()

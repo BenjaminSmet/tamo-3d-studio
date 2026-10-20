@@ -65,6 +65,8 @@ def main() -> None:
     parser.add_argument("--smooth", type=float, default=1.0)
     parser.add_argument("--no-metahuman", action="store_true")
     parser.add_argument("--run-dir", type=Path)
+    parser.add_argument("--views-only", action="store_true",
+                        help="cut out and frame the views, then stop before generating (to check the framing)")
     args = parser.parse_args()
 
     inputs = [("front", args.front, "auto"), ("side", args.side, args.side_facing),
@@ -107,8 +109,16 @@ def main() -> None:
     record["views"] = framing
     heights = [v["head_height_px"] for v in framing["views"]]
     print("Cropped to head and neck.")
+    for v in framing["views"]:
+        if not v["chin_found"]:
+            print(f"Couldn't find the chin in the {v['name']} view; sized it from the neck instead. "
+                  f"Check {run_dir / 'views'}.")
     # The input image the app shows for this version.
     Image.open(run_dir / "views" / "view00_front.png").save(run_dir / "input_rgba.png")
+    if args.views_only:
+        (run_dir / "run.json").write_text(json.dumps(record, indent=2))
+        print(f"Views written to {run_dir / 'views'}; head heights (top of head to chin) {heights} px.")
+        return
 
     cmd = [str(espalier), str(run_dir / "views"), str(run_dir), "--model", "pixal3d", "--no-rembg",
            "--pipeline", args.pipeline, "--seed", str(args.seed)]
