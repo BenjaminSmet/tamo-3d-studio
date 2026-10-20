@@ -6,7 +6,7 @@ Each view is cropped square and scaled by the height from the top of the head to
 bottom of the chin, which stays the same from every side at eye level; the top of the
 head sits on the same row and the head's silhouette is centred, so the same 3D box fills
 the same share of every frame. The narrowest point of the neck is no good for this: in a
-front view it sits just under the chin, in a profile well down the throat.
+front view it sits level with the lower face, in a profile well down the throat.
 
 Cameras follow Pixal3D's convention (Blender/NeRF): world Z up, the front camera at
 (0, -d, 0) looking at the origin, each camera looking along its own -Z with +Y up.
@@ -74,11 +74,46 @@ def chin_row(alpha: np.ndarray, top: int, neck: int, direction: str) -> int | No
     return int(rows[nose + jump + step // 2])
 
 
+def front_chin_row(rgba: Image.Image, alpha: np.ndarray, top: int, neck: int) -> int | None:
+    """The bottom of the chin in a front view, or None if it doesn't show clearly.
+
+    From the front the chin sits inside the silhouette, in front of the neck, so the outline
+    can't show it; its lit underside meeting the shadowed throat can. The narrowest point of
+    the neck's outline sits level with the lower face, so from just above it look down a
+    central strip half the neck wide for the strongest light-to-dark step. Starting higher
+    would catch the shadows under the nose and lips instead.
+    """
+    height = neck - top
+    start = neck - int(0.05 * height)
+    end = min(alpha.shape[0] - 1, neck + int(0.25 * height))
+    neck_cols = np.flatnonzero(alpha[neck])
+    if len(neck_cols) == 0 or end - start < 8:
+        return None
+    centre, half = neck_cols.mean(), 0.25 * (neck_cols[-1] - neck_cols[0])
+    c0, c1 = int(centre - half), int(centre + half) + 1
+    rgb = np.asarray(rgba.convert("RGB"), dtype=float)[start:end, c0:c1]
+    inside = alpha[start:end, c0:c1]
+    luma = rgb @ np.array([0.299, 0.587, 0.114])
+    count = inside.sum(axis=1)
+    if (count == 0).any():
+        return None
+    rows = (luma * inside).sum(axis=1) / count
+    rows = np.convolve(np.pad(rows, 2, mode="edge"), np.ones(5) / 5, mode="valid")   # no dip at the ends
+    k = max(2, int(0.015 * height))
+    drop = rows[:-2 * k] - rows[2 * k:]                                                # light above, dark below
+    if len(drop) == 0:
+        return None
+    best = int(np.argmax(drop))
+    if drop[best] <= 0 or drop[best] < 0.09 * (rows.max() - rows.min() + 1e-6):
+        return None
+    return start + best + k
+
+
 def head_box(rgba: Image.Image, direction: str | None = None) -> dict:
     """Top of the head, the neck, the chin, and the head's left and right edges, in pixels.
 
-    direction: None for a front view (the chin is taken as the narrowest point of the
-    neck, which sits just under it), or "left"/"right" for a turned view facing that way.
+    direction: None for a front view (the chin from front_chin_row, else the narrowest point
+    of the neck, which sits just under it), or "left"/"right" for a turned view facing that way.
     """
     alpha = np.asarray(rgba.getchannel("A")) >= ALPHA_THRESHOLD
     rows = np.flatnonzero(alpha.any(axis=1))
@@ -92,9 +127,9 @@ def head_box(rgba: Image.Image, direction: str | None = None) -> dict:
     neck_cols = np.flatnonzero(alpha[neck])
     box = {"top": top, "neck": neck, "bottom": bottom, "left": int(cols[0]), "right": int(cols[-1]) + 1,
            "neck_centre": float(neck_cols.mean()) if len(neck_cols) else None}
-    chin = chin_row(alpha, top, neck, direction) if direction else None
+    chin = chin_row(alpha, top, neck, direction) if direction else front_chin_row(rgba, alpha, top, neck)
     box["chin"] = chin if chin is not None else neck
-    box["chin_found"] = direction is None or chin is not None
+    box["chin_found"] = chin is not None
     if chin is not None:
         cols = np.flatnonzero(alpha[top:chin].any(axis=0))
         box["left"], box["right"] = int(cols[0]), int(cols[-1]) + 1

@@ -49,3 +49,12 @@ A run takes about 6 minutes, most of it loading the model, and needs about 11 GB
 itself and always runs Pixal3D with `--no-rembg`. Pixal3D's `model.glb` faces the opposite way
 from TRELLIS.2's; the MetaHuman export turns it round, so `head_metahuman.fbx` faces the usual
 way.
+
+## First results (Nia, 2026-10-20)
+
+With matching head sizes in every view, both multi-view heads (from the triptych sheet and
+from the app's references) beat the front-only TRELLIS.2 head on shape: the forehead slope,
+nose, lips, chin and the long back of the skull follow the side photo. The texture is worse
+(eye make-up and brows bake in darker), so use the multi-view `head_metahuman.fbx` for the
+shape, since MetaHuman builds its own skin. Views from one shoot work best; earrings come out
+as small blobs.
