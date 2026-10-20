@@ -20,6 +20,34 @@ class Progress:
     fraction: float
 
 
+BAR = re.compile(r"^\s*(.+?):\s+(\d{1,3})%\|")
+
+
+def advance(line: str, current: Progress, stages: list, bars: list) -> Progress | None:
+    """The new progress if this output line moves it on, else None.
+
+    stages: (marker, stage, fraction) for messages that mark a step. bars: (name, stage, start,
+    end) for sampler progress bars, in the order they run; a bar fills the first band whose name
+    it starts with that isn't finished yet, so a bar that restarts at 0% (a second pass with the
+    same name) moves into the next band.
+    """
+    for marker, stage, fraction in stages:
+        if marker in line and fraction > current.fraction:
+            return Progress(stage, fraction)
+    match = BAR.search(line)
+    if match:
+        name, step = match.group(1), min(int(match.group(2)), 100) / 100
+        for bar, stage, start, end in bars:
+            if name.startswith(bar) and end > current.fraction:
+                if stage != current.stage and step >= 1:
+                    break   # tqdm redraws a finished bar at 100%; that isn't the next pass starting
+                fraction = max(start + step * (end - start), current.fraction)
+                if fraction > current.fraction + 0.005 or stage != current.stage:
+                    return Progress(stage, fraction)
+                break
+    return None
+
+
 class Trellis2Engine:
     """TRELLIS.2 through ai-engine/phase1/run_phase1.py (Espalier-2)."""
 
@@ -54,8 +82,6 @@ class Trellis2Engine:
         ("Sampling shape SLat", "Generating: shape detail", 0.57, 0.66),
         ("Sampling texture SLat", "Generating: texture", 0.66, 0.73),
     ]
-    BAR = re.compile(r"^\s*(.+?):\s+(\d{1,3})%\|")
-
     def __init__(self, settings: Settings):
         self.settings = settings
 
@@ -78,24 +104,7 @@ class Trellis2Engine:
         return cmd
 
     def progress(self, line: str, current: Progress) -> Progress | None:
-        """The new progress if this output line moves it on, else None."""
-        for marker, stage, fraction in self.STAGES:
-            if marker in line and fraction > current.fraction:
-                return Progress(stage, fraction)
-        # A sampler bar fills the first band with its name that isn't finished yet, so a bar
-        # that restarts at 0% (the cascade's second shape pass) moves into the next band.
-        match = self.BAR.search(line)
-        if match:
-            name, step = match.group(1), min(int(match.group(2)), 100) / 100
-            for bar, stage, start, end in self.BARS:
-                if bar == name and end > current.fraction:
-                    if stage != current.stage and step >= 1:
-                        break   # tqdm redraws a finished bar at 100%; that isn't the next pass starting
-                    fraction = max(start + step * (end - start), current.fraction)
-                    if fraction > current.fraction + 0.005 or stage != current.stage:
-                        return Progress(stage, fraction)
-                    break
-        return None
+        return advance(line, current, self.STAGES, self.BARS)
 
     def validate(self, options: dict) -> dict:
         merged = {**self.defaults, **{k: v for k, v in options.items() if v is not None}}
@@ -123,18 +132,29 @@ class Pixal3DEngine:
     defaults = {"texture": True, "pipeline": "1024_cascade", "seed": 42, "smooth": 1.0,
                 "side_id": None, "three_quarter_id": None}
 
-    # From a 1024_cascade textured run on an RTX 5070 Ti, about 5 minutes, most of it loading.
+    # Timed like TRELLIS.2's, from a 1024_cascade textured run on an RTX 5070 Ti (about 4.7
+    # minutes: 20 s cutting out and framing, 70 s loading, 65 s sampling, 110 s building and
+    # baking the mesh, 15 s for the MetaHuman export).
     STAGES = [
         ("Removing background", "Removing the background", 0.01),
-        ("Cropped to head and neck", "Framing the views", 0.08),
-        ("GPU memory in use before generation", "Loading the models", 0.10),
-        ("exported /", "Saving the model", 0.86),
-        ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.90),
+        ("Cropped to head and neck", "Framing the views", 0.07),
+        ("GPU memory in use before generation", "Loading the models", 0.09),
+        ("generated {", "Building the mesh", 0.56),
+        ("Running Dual Contouring", "Building the mesh", 0.60),
+        ("Simplifying", "Simplifying the mesh", 0.66),
+        ("Parameterizing new mesh", "Unwrapping the texture", 0.70),
+        ("Sampling attributes", "Baking the texture", 0.80),
+        ("exported /", "Saving the model", 0.92),
+        ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.93),
         ("Result:", "Finishing", 0.99),
     ]
-    # Pixal3D's sampler bars aren't timed one by one; any bar moves "Generating" along.
-    BAR = Trellis2Engine.BAR
-    GENERATING = (0.45, 0.84)
+    # The high-resolution pass names its resolution ("..., 1024)"), so bars match by prefix.
+    BARS = [
+        ("Sampling sparse structure (proj)", "Generating: rough shape", 0.33, 0.35),
+        ("Sampling shape SLat (proj)", "Generating: shape", 0.35, 0.37),
+        ("Sampling HR shape SLat", "Generating: shape detail", 0.37, 0.46),
+        ("Sampling texture SLat (proj)", "Generating: texture", 0.46, 0.52),
+    ]
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -159,17 +179,7 @@ class Pixal3DEngine:
         return cmd
 
     def progress(self, line: str, current: Progress) -> Progress | None:
-        for marker, stage, fraction in self.STAGES:
-            if marker in line and fraction > current.fraction:
-                return Progress(stage, fraction)
-        match = self.BAR.search(line)
-        if match and current.fraction < self.GENERATING[1]:
-            start, end = self.GENERATING
-            step = min(int(match.group(2)), 100) / 100
-            fraction = max(start + step * (end - start), current.fraction)
-            if fraction > current.fraction + 0.005 or current.stage != "Generating the head":
-                return Progress("Generating the head", fraction)
-        return None
+        return advance(line, current, self.STAGES, self.BARS)
 
     def validate(self, options: dict) -> dict:
         merged = {**self.defaults, **{k: v for k, v in options.items() if v is not None}}

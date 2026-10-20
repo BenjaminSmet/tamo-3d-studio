@@ -55,7 +55,8 @@ function CopyPath({ path }: { path: string | null }) {
   );
 }
 
-const fileName = (r: Reference) => r.path.split("/").pop();
+// Without the "<view>-<date>-<time>-" the library adds, so images read by their own names.
+const fileName = (r: Reference) => r.path.split("/").pop()?.replace(/^[a-z_]+-\d{8}-\d{6}-/, "");
 
 function ImagePicker({ label, value, options, none, onChange }: {
   label: string;
@@ -69,6 +70,7 @@ function ImagePicker({ label, value, options, none, onChange }: {
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        title={options.find((r) => r.id === value)?.path.split("/").pop()}
         className="max-w-40 rounded border border-edge bg-[#141517] px-1 py-0.5"
       >
         {none && <option value="">{none}</option>}

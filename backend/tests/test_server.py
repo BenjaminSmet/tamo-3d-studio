@@ -118,6 +118,29 @@ def test_turned_view_in_use_cant_be_deleted(client, monkeypatch):
     assert client.delete(f"/api/references/{side['id']}").status_code == 200
 
 
+def test_multiview_progress_follows_pixal3ds_bars():
+    from tamo_server.engine import Pixal3DEngine, Progress
+    engine, progress, seen = Pixal3DEngine(None), Progress("Starting", 0.0), []
+    lines = ["Removing background with BiRefNet...", "Cropped to head and neck.",
+             "GPU memory in use before generation: 1007 MiB"]
+    for bar in ("Sampling sparse structure (proj)", "Sampling shape SLat (proj)",
+                "Sampling HR shape SLat (proj, 1024)", "Sampling texture SLat (proj)"):
+        lines += [f"{bar}: {n}%|##| {n}/100" for n in (0, 50, 100, 100)]
+    lines += ["generated {'mesh': 1}", "Sampling attributes", "exported /x/model.glb",
+              "Exporting the MetaHuman-aligned head with Blender...", "Result:       ok"]
+    for line in lines:
+        moved = engine.progress(line, progress)
+        if moved:
+            progress = moved
+            seen.append((progress.stage, progress.fraction))
+    fractions = [f for _, f in seen]
+    assert fractions == sorted(fractions)
+    stages = [s for s, _ in seen]
+    for stage in ("Generating: rough shape", "Generating: shape detail", "Generating: texture", "Baking the texture"):
+        assert stage in stages
+    assert max(f for s, f in seen if s.startswith("Generating")) <= 0.52
+
+
 def test_failed_job_keeps_the_error(client, monkeypatch):
     monkeypatch.setenv("FAKE_ENGINE", "fail")
     _, actor, reference = make_actor(client)
