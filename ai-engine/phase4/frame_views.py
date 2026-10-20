@@ -29,6 +29,11 @@ from crop_head import ALPHA_THRESHOLD, BELOW_NECK, MARGIN, find_neck_row  # noqa
 FOV_DEG = 20.0
 DISTANCE = 3.1192
 SIZE = 1024
+# How much of the head's height (top of the head to the chin) may touch a side of the photo.
+# The back of the skull grazing the edge at its widest point is harmless (Nia's side photo:
+# 24-26%); a photo that clips the skull gives a squeezed, tall head (Amara's: 45-67%).
+CUT_OFF_WARN = 0.10
+CUT_OFF_STOP = 0.35
 
 
 def camera_to_world(azimuth_deg: float, elevation_deg: float = 0.0, distance: float = DISTANCE) -> list:
@@ -159,19 +164,15 @@ def frame(rgba: Image.Image, box: dict) -> Image.Image:
     return cropped.resize((SIZE, SIZE), Image.LANCZOS)
 
 
-def cut_off_edges(rgba: Image.Image, box: dict) -> list[str]:
-    """Which edges of the photo cut through the head (above the chin). Pixal3D takes such an
-    edge as the end of the head, so a skull cut off at the back comes out squeezed and tall."""
+def cut_off_edges(rgba: Image.Image, box: dict) -> dict[str, float]:
+    """The edges of the photo the head (above the chin) touches, with how much of its height
+    touches each; the top edge counts as all of it. Pixal3D takes such an edge as the end of
+    the head, so a skull cut off at the back comes out squeezed and tall."""
     alpha = np.asarray(rgba.getchannel("A")) >= ALPHA_THRESHOLD
     head = alpha[box["top"]:box["chin"]]
-    edges = []
-    if alpha[0].any():
-        edges.append("top")
-    if head[:, 0].sum() > 0.05 * len(head):
-        edges.append("left")
-    if head[:, -1].sum() > 0.05 * len(head):
-        edges.append("right")
-    return edges
+    edges = {"top": 1.0 if alpha[0].any() else 0.0,
+             "left": head[:, 0].mean(), "right": head[:, -1].mean()}
+    return {edge: round(float(share), 3) for edge, share in edges.items() if share > 0}
 
 
 def write_views(views: list[tuple[str, Image.Image, float]], out_dir: Path, fov_deg: float = FOV_DEG) -> dict:
@@ -181,15 +182,20 @@ def write_views(views: list[tuple[str, Image.Image, float]], out_dir: Path, fov_
     for i, (name, rgba, azimuth) in enumerate(views):
         box = head_box(rgba, None if azimuth == 0 else ("left" if azimuth > 0 else "right"))
         edges = cut_off_edges(rgba, box)
-        if edges:
-            raise ValueError(f"The {name.replace('_', '-')} photo cuts off the head at the {' and '.join(edges)} "
-                             "edge. Use a photo that shows the whole head, back of the skull included, "
-                             "with some space around it.")
+        advice = "Use a photo that shows the whole head, back of the skull included, with some space around it."
+        stop = [edge for edge, share in edges.items() if share > CUT_OFF_STOP]
+        if stop:
+            raise ValueError(f"The {name.replace('_', '-')} photo cuts off the head at the {' and '.join(stop)} "
+                             f"edge. {advice}")
+        warn = [edge for edge, share in edges.items() if share > CUT_OFF_WARN]
+        if warn:
+            print(f"The head touches the {' and '.join(warn)} edge of the {name.replace('_', '-')} photo; "
+                  f"carrying on, but check the back of the skull. {advice}")
         file_name = f"view{i:02d}_{name}.png"
         frame(rgba, box).save(out_dir / file_name)
         frames.append({"file_path": file_name, "name": name, "transform_matrix": camera_to_world(azimuth)})
         report.append({"name": name, "azimuth": azimuth, "head_height_px": box["chin"] - box["top"],
-                       "chin_found": box["chin_found"], "facing": facing(box)})
+                       "chin_found": box["chin_found"], "facing": facing(box), "touches_edges": edges})
     (out_dir / "transforms.json").write_text(json.dumps(
         {"camera_angle_x": math.radians(fov_deg), "mesh_scale": 1.0, "frames": frames}, indent=2))
     return {"fov_deg": fov_deg, "views": report}
