@@ -32,6 +32,8 @@ way the face points.
 
 ## Run
 
+In the app, pick **Multi-view (Pixal3D)** as the method (see [app.md](app.md)). From the command line:
+
 ```bash
 ~/espalier-pixal3d/.venv/bin/python ai-engine/phase4/run_multiview.py --actor nia_okafor \
     --front front.png --side side.png --three-quarter three_quarter.png --texture

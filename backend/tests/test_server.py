@@ -26,7 +26,8 @@ def client(tmp_path, library, monkeypatch):
     settings = Settings(
         library=library, database=tmp_path / "db" / "studio.sqlite", logs=tmp_path / "db" / "logs",
         engine_python=Path(sys.executable), engine_script=FAKE_ENGINE, espalier=tmp_path,
-        app_dist=tmp_path / "no-dist",
+        app_dist=tmp_path / "no-dist", multiview_python=Path(sys.executable), multiview_script=FAKE_ENGINE,
+        pixal3d=tmp_path,
     )
     with TestClient(create_app(settings)) as test_client:
         yield test_client
@@ -62,7 +63,8 @@ def test_generation_end_to_end(client, library):
     assert Path(reference["path"]).parent == library / "tamo" / "actors" / "nia_okafor" / "references"
 
     job = client.post(f"/api/actors/{actor['id']}/generations", json={"reference_id": reference["id"]}).json()
-    assert job["settings"] == {"texture": True, "pipeline": "1024_cascade", "seed": 42, "smooth": 1.0, "crop": True}
+    assert job["settings"] == {"texture": True, "pipeline": "1024_cascade", "seed": 42, "smooth": 1.0, "crop": True,
+                               "model": "trellis2"}
     job = wait_for(client, job["id"])
     assert job["status"] == "done", job["error"]
     assert job["progress"] == 1
@@ -79,6 +81,41 @@ def test_generation_end_to_end(client, library):
 
     assert client.post(f"/api/actors/{actor['id']}/preferred",
                        data={"generation_id": generation["id"]}).json()["preferred_generation_id"] == generation["id"]
+
+
+def test_multiview_uses_the_actors_turned_views(client, library):
+    _, actor, front = make_actor(client)
+    url = f"/api/actors/{actor['id']}/generations"
+    assert client.post(url, json={"reference_id": front["id"], "model": "pixal3d"}).status_code == 422   # no turned views
+    assert client.post(url, json={"reference_id": front["id"], "side_id": front["id"]}).status_code == 422
+    side = client.post(f"/api/actors/{actor['id']}/references",
+                       files={"file": ("Nia side.png", png(), "image/png")}, data={"view": "side"}).json()
+    assert client.post(url, json={"reference_id": front["id"], "model": "pixal3d",
+                                  "pipeline": "1024"}).status_code == 422
+
+    job = client.post(url, json={"reference_id": front["id"], "model": "pixal3d"}).json()
+    assert job["settings"]["model"] == "pixal3d"
+    assert job["settings"]["side_id"] == side["id"] and job["settings"]["three_quarter_id"] is None
+    job = wait_for(client, job["id"])
+    assert job["status"] == "done", job["error"]
+    assert "/generations/" in job["run_dir"] and job["run_dir"].split("/")[-1].endswith("-multiview-textured")
+    log = client.get(f"/api/jobs/{job['id']}/log").text
+    assert f"--front {front['path']}" in log and f"--side {side['path']}" in log and "--three-quarter" not in log
+    [generation] = client.get(f"/api/actors/{actor['id']}").json()["generations"]
+    assert generation["record"]["model"] == "pixal3d"
+
+
+def test_turned_view_in_use_cant_be_deleted(client, monkeypatch):
+    monkeypatch.setenv("FAKE_ENGINE", "slow")
+    _, actor, front = make_actor(client)
+    side = client.post(f"/api/actors/{actor['id']}/references",
+                       files={"file": ("Nia side.png", png(), "image/png")}, data={"view": "side"}).json()
+    job = client.post(f"/api/actors/{actor['id']}/generations",
+                      json={"reference_id": front["id"], "model": "pixal3d"}).json()
+    assert client.delete(f"/api/references/{side['id']}").status_code == 409
+    client.post(f"/api/jobs/{job['id']}/cancel")
+    wait_for(client, job["id"])
+    assert client.delete(f"/api/references/{side['id']}").status_code == 200
 
 
 def test_failed_job_keeps_the_error(client, monkeypatch):

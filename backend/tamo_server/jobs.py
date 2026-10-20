@@ -15,16 +15,16 @@ from collections import deque
 from pathlib import Path
 
 from .db import Database, now
-from .engine import Progress, Trellis2Engine
+from .engine import TURNED_VIEWS, Progress
 from .library import move_to_trash, new_run_dir
 
 LOG_TAIL_LINES = 40
 
 
 class JobQueue:
-    def __init__(self, db: Database, engine: Trellis2Engine, library: Path, logs: Path):
+    def __init__(self, db: Database, engines: dict, library: Path, logs: Path):
         self.db = db
-        self.engine = engine
+        self.engines = engines   # by name; a job's settings name its engine (TRELLIS.2 when they don't)
         self.library = library
         self.logs = logs
         self._wake = threading.Event()
@@ -101,14 +101,21 @@ class JobQueue:
             "SELECT a.slug AS actor, p.slug AS project, r.path AS image FROM actors a "
             "JOIN projects p ON p.id = a.project_id JOIN reference_images r ON r.id = ? WHERE a.id = ?",
             (job["reference_id"], job["actor_id"]))
-        if info is None or not Path(info["image"]).is_file():
+        engine = self.engines[settings.get("model", "trellis2")]
+        images = {"front": Path(info["image"])} if info else {}
+        for view in TURNED_VIEWS:
+            reference_id = settings.get(f"{view}_id")
+            if reference_id is not None:
+                row = self.db.one("SELECT path FROM reference_images WHERE id = ?", (reference_id,))
+                images[view] = Path(row["path"]) if row else Path("/missing")
+        if info is None or not all(path.is_file() for path in images.values()):
             self.db.update("jobs", job_id, status="failed", stage="Failed",
-                           error="The reference image is missing from the library.", finished=now())
+                           error="A reference image is missing from the library.", finished=now())
             return
 
         mode = "textured" if settings["texture"] else "geometry"
-        run_dir = new_run_dir(self.library, info["project"], info["actor"], mode)
-        cmd = self.engine.command(Path(info["image"]), info["project"], info["actor"], run_dir, settings)
+        run_dir = new_run_dir(self.library, info["project"], info["actor"], engine.run_name + mode)
+        cmd = engine.command(images, info["project"], info["actor"], run_dir, settings)
         progress = Progress("Starting", 0.0)
         self.db.update("jobs", job_id, status="running", stage=progress.stage, progress=0, run_dir=str(run_dir),
                        attempts=job["attempts"] + 1, started=now(), error=None)
@@ -131,7 +138,7 @@ class JobQueue:
                         continue
                     log.write(line + "\n")
                     tail.append(line)
-                    moved = self.engine.progress(line, progress)
+                    moved = engine.progress(line, progress)
                     if moved:
                         progress = moved
                         self.db.update("jobs", job_id, stage=progress.stage, progress=round(progress.fraction, 3))

@@ -1,4 +1,4 @@
-"""The generation engine behind one adapter, so a future model can replace TRELLIS.2.
+"""The generation engines, each behind one adapter, so models can be added or replaced.
 
 An adapter turns a job into a command and reads progress from the command's output.
 The command writes everything into the run folder, ending with run.json.
@@ -11,6 +11,7 @@ from pathlib import Path
 from .config import Settings
 
 PIPELINES = ("512", "1024", "1024_cascade", "1536_cascade")
+TURNED_VIEWS = ("side", "three_quarter")
 
 
 @dataclass
@@ -23,6 +24,8 @@ class Trellis2Engine:
     """TRELLIS.2 through ai-engine/phase1/run_phase1.py (Espalier-2)."""
 
     name = "trellis2"
+    run_name = ""
+    views = ()
     defaults = {"texture": True, "pipeline": "1024_cascade", "seed": 42, "smooth": 1.0, "crop": True}
 
     # The script's and Espalier-2's own messages, in order, and how far along each one is, in
@@ -56,11 +59,14 @@ class Trellis2Engine:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def command(self, image: Path, project: str, actor: str, run_dir: Path, options: dict) -> list[str]:
+    def found(self) -> bool:
+        return self.settings.engine_python.is_file() and self.settings.engine_script.is_file()
+
+    def command(self, images: dict[str, Path], project: str, actor: str, run_dir: Path, options: dict) -> list[str]:
         cmd = [
             # -u: unbuffered, or the script's output reaches the server in 8 KB bursts and progress stalls.
             str(self.settings.engine_python), "-u", str(self.settings.engine_script),
-            "--image", str(image), "--actor", actor, "--project", project,
+            "--image", str(images["front"]), "--actor", actor, "--project", project,
             "--library", str(self.settings.library), "--espalier", str(self.settings.espalier),
             "--run-dir", str(run_dir),
             "--pipeline", options["pipeline"], "--seed", str(options["seed"]), "--smooth", str(options["smooth"]),
@@ -100,6 +106,79 @@ class Trellis2Engine:
             raise ValueError(f"pipeline must be one of {', '.join(PIPELINES)}")
         merged["texture"] = bool(merged["texture"])
         merged["crop"] = bool(merged["crop"])
+        merged["seed"] = int(merged["seed"])
+        merged["smooth"] = float(merged["smooth"])
+        if not 0 <= merged["smooth"] <= 3:
+            raise ValueError("smooth must be between 0 and 3")
+        return merged
+
+
+class Pixal3DEngine:
+    """Pixal3D (multi-view) through ai-engine/phase4/run_multiview.py: the front image plus a
+    side and/or three-quarter one, in their own copy of Espalier-2."""
+
+    name = "pixal3d"
+    run_name = "multiview-"
+    views = TURNED_VIEWS
+    defaults = {"texture": True, "pipeline": "1024_cascade", "seed": 42, "smooth": 1.0,
+                "side_id": None, "three_quarter_id": None}
+
+    # From a 1024_cascade textured run on an RTX 5070 Ti, about 5 minutes, most of it loading.
+    STAGES = [
+        ("Removing background", "Removing the background", 0.01),
+        ("Cropped to head and neck", "Framing the views", 0.08),
+        ("GPU memory in use before generation", "Loading the models", 0.10),
+        ("exported /", "Saving the model", 0.86),
+        ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.90),
+        ("Result:", "Finishing", 0.99),
+    ]
+    # Pixal3D's sampler bars aren't timed one by one; any bar moves "Generating" along.
+    BAR = Trellis2Engine.BAR
+    GENERATING = (0.45, 0.84)
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    def found(self) -> bool:
+        python, script = self.settings.multiview_python, self.settings.multiview_script
+        return bool(python and script and python.is_file() and script.is_file())
+
+    def command(self, images: dict[str, Path], project: str, actor: str, run_dir: Path, options: dict) -> list[str]:
+        cmd = [
+            str(self.settings.multiview_python), "-u", str(self.settings.multiview_script),
+            "--front", str(images["front"]), "--actor", actor, "--project", project,
+            "--library", str(self.settings.library), "--espalier", str(self.settings.pixal3d),
+            "--run-dir", str(run_dir),
+            "--pipeline", options["pipeline"], "--seed", str(options["seed"]), "--smooth", str(options["smooth"]),
+        ]
+        for view in TURNED_VIEWS:
+            if view in images:
+                cmd += [f"--{view.replace('_', '-')}", str(images[view])]
+        if options["texture"]:
+            cmd.append("--texture")
+        return cmd
+
+    def progress(self, line: str, current: Progress) -> Progress | None:
+        for marker, stage, fraction in self.STAGES:
+            if marker in line and fraction > current.fraction:
+                return Progress(stage, fraction)
+        match = self.BAR.search(line)
+        if match and current.fraction < self.GENERATING[1]:
+            start, end = self.GENERATING
+            step = min(int(match.group(2)), 100) / 100
+            fraction = max(start + step * (end - start), current.fraction)
+            if fraction > current.fraction + 0.005 or current.stage != "Generating the head":
+                return Progress("Generating the head", fraction)
+        return None
+
+    def validate(self, options: dict) -> dict:
+        merged = {**self.defaults, **{k: v for k, v in options.items() if v is not None}}
+        unknown = set(merged) - set(self.defaults)
+        if unknown:
+            raise ValueError(f"Unknown settings: {', '.join(sorted(unknown))}")
+        if merged["pipeline"] not in ("1024_cascade", "1536_cascade"):
+            raise ValueError("pipeline must be 1024_cascade or 1536_cascade for multi-view")
+        merged["texture"] = bool(merged["texture"])
         merged["seed"] = int(merged["seed"])
         merged["smooth"] = float(merged["smooth"])
         if not 0 <= merged["smooth"] <= 3:

@@ -57,9 +57,12 @@ Your existing runs under `library/projects/` show up automatically as versions.
 
 1. Pick or create a project, then add an actor.
 2. Drop in images and say which view each one is (front, three-quarter, side, back, or final
-   look). Only the front image is used to build the head today; the rest are kept for
-   multi-view later. Follow [shape-reference.md](shape-reference.md) for the front image.
-3. Press **Generate head**. Progress shows in the viewer and in the queue on the left.
+   look). Follow [shape-reference.md](shape-reference.md) for the front image.
+3. Pick the **Method**. With a Side or Three-quarter image, **Multi-view (Pixal3D)** is the
+   default: it follows the profile (nose, lips, chin, back of the skull) more closely, and
+   its texture is weaker, which MetaHuman doesn't use. **Front only (TRELLIS.2)** uses just
+   the front image. Multi-view needs Pixal3D installed ([multiview.md](multiview.md)).
+   Press **Generate head**. Progress shows in the viewer and in the queue on the left.
 4. Turn the head in the viewer (textured or clay), and download **MetaHuman head (FBX)**.
    In Unreal, import it with default settings, then MetaHuman Character → Import →
    From Custom Mesh.

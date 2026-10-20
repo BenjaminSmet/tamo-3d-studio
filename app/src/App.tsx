@@ -165,6 +165,7 @@ export default function App() {
           onSelect={setSelection}
           onChanged={refreshActor}
           onError={report}
+          multiviewFound={health?.multiview_found ?? false}
         />
       </div>
     </div>
