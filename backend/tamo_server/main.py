@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .config import Settings
 from .db import Database, generation_view, job_view, now
-from .engine import Trellis2Engine
+from .engine import TURNED_VIEWS, Pixal3DEngine, Trellis2Engine
 from . import updates
 from .jobs import JobQueue
 from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, move_to_trash,
@@ -45,6 +45,9 @@ class NewActor(BaseModel):
 
 class NewGeneration(BaseModel):
     reference_id: int
+    model: str = "trellis2"            # or "pixal3d": multi-view, with a side and/or three-quarter image
+    side_id: int | None = None         # multi-view only; the actor's newest of each view when left out
+    three_quarter_id: int | None = None
     texture: bool | None = None
     pipeline: str | None = None
     seed: int | None = None
@@ -55,8 +58,8 @@ class NewGeneration(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.database)
-    engine = Trellis2Engine(settings)
-    queue = JobQueue(db, engine, settings.library, settings.logs)
+    engines = {e.name: e for e in (Trellis2Engine(settings), Pixal3DEngine(settings))}
+    queue = JobQueue(db, engines, settings.library, settings.logs)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -101,8 +104,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health():
         return {
             "ok": True,
-            "engine": engine.name,
-            "engine_found": settings.engine_python.is_file() and settings.engine_script.is_file(),
+            "engine": "trellis2",
+            "engine_found": engines["trellis2"].found(),
+            "multiview_found": engines["pixal3d"].found(),
             "library": str(settings.library),
             "library_windows_path": windows_path(str(settings.library)),
             "trash_windows_path": windows_path(str(trash_dir(settings.library))),
@@ -220,8 +224,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                            (body.reference_id, actor_id))
         if not reference:
             raise HTTPException(404, "That reference image doesn't belong to this actor.")
+        engine = engines.get(body.model)
+        if engine is None:
+            raise HTTPException(422, f"model must be one of {', '.join(engines)}")
+        options = body.model_dump(exclude={"reference_id", "model"})
+        if engine.views:
+            for view in engine.views:
+                key = f"{view}_id"
+                if options[key] is None:
+                    newest = db.one("SELECT id FROM reference_images WHERE actor_id = ? AND view = ? "
+                                    "ORDER BY id DESC LIMIT 1", (actor_id, view))
+                    options[key] = newest["id"] if newest else None
+                elif not db.one("SELECT id FROM reference_images WHERE id = ? AND actor_id = ?",
+                                (options[key], actor_id)):
+                    raise HTTPException(404, f"That {view.replace('_', '-')} image doesn't belong to this actor.")
+            if all(options[f"{view}_id"] is None for view in engine.views):
+                raise HTTPException(422, "Multi-view needs a side or three-quarter image of this actor.")
+        else:
+            for view in TURNED_VIEWS:
+                if options.pop(f"{view}_id") is not None:
+                    raise HTTPException(422, "Only multi-view uses side and three-quarter images.")
         try:
-            options = engine.validate(body.model_dump(exclude={"reference_id"}))
+            options = {**engine.validate(options), "model": engine.name}
         except ValueError as error:
             raise HTTPException(422, str(error))
         job_id = queue.submit(actor_id, reference["id"], options)
@@ -301,7 +325,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         found = db.one("SELECT * FROM reference_images WHERE id = ?", (reference_id,))
         if not found:
             raise HTTPException(404, "No such reference image.")
-        refuse_if_busy("j.reference_id = ?", (reference_id,), "This image")
+        refuse_if_busy("(j.reference_id = ? OR json_extract(j.settings, '$.side_id') = ? "
+                       "OR json_extract(j.settings, '$.three_quarter_id') = ?)", (reference_id,) * 3, "This image")
         db.transaction([
             ("UPDATE generations SET job_id = NULL WHERE job_id IN (SELECT id FROM jobs WHERE reference_id = ?)",
              (reference_id,)),

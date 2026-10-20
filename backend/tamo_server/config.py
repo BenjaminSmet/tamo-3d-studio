@@ -16,6 +16,10 @@ class Settings:
     engine_script: Path     # run_phase1.py, or a stand-in for tests
     espalier: Path
     app_dist: Path          # built interface, served at / when present
+    # Multi-view (Pixal3D) lives in its own copy of Espalier-2; see docs/multiview.md.
+    multiview_python: Path | None = None
+    multiview_script: Path | None = None
+    pixal3d: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -23,6 +27,7 @@ class Settings:
             return Path(os.environ.get(name, default)).expanduser()
 
         espalier = path("TAMO_ESPALIER", Path.home() / "espalier")
+        pixal3d = path("TAMO_PIXAL3D", Path.home() / "espalier-pixal3d")
         database = path("TAMO_DATABASE", REPO_ROOT / "database" / "studio.sqlite")
         return cls(
             library=path("TAMO_LIBRARY", REPO_ROOT / "library" / "projects"),
@@ -32,4 +37,7 @@ class Settings:
             engine_script=path("TAMO_ENGINE_SCRIPT", REPO_ROOT / "ai-engine" / "phase1" / "run_phase1.py"),
             espalier=espalier,
             app_dist=path("TAMO_APP_DIST", REPO_ROOT / "app" / "dist"),
+            multiview_python=path("TAMO_MULTIVIEW_PYTHON", pixal3d / ".venv" / "bin" / "python"),
+            multiview_script=path("TAMO_MULTIVIEW_SCRIPT", REPO_ROOT / "ai-engine" / "phase4" / "run_multiview.py"),
+            pixal3d=pixal3d,
         )

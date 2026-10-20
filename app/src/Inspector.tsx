@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { api, DEFAULT_SETTINGS, generationFileUrl, VIEWS, type Actor, type Settings, type View } from "./api";
+import {
+  api,
+  DEFAULT_SETTINGS,
+  generationFileUrl,
+  VIEWS,
+  type Actor,
+  type Model,
+  type Reference,
+  type Settings,
+  type View,
+} from "./api";
 import type { Selection } from "./App";
 import { shownGeneration } from "./Studio";
 import { Button, ConfirmDelete, Field, Section, formatDate, formatSeconds } from "./ui";
@@ -10,13 +20,14 @@ type Props = {
   onSelect: (selection: Selection) => void;
   onChanged: () => void;
   onError: (e: unknown) => void;
+  multiviewFound: boolean;
 };
 
 const FILE_LABELS: Record<string, string> = {
   "head_metahuman.fbx": "MetaHuman head (FBX)",
   "model.glb": "Raw model (GLB)",
   "model.obj": "Raw model (OBJ)",
-  "input_rgba.png": "What TRELLIS.2 saw",
+  "input_rgba.png": "What the model saw (front)",
 };
 
 function CopyPath({ path }: { path: string | null }) {
@@ -44,44 +55,115 @@ function CopyPath({ path }: { path: string | null }) {
   );
 }
 
-function GenerateForm({ actor, onChanged, onError }: { actor: Actor; onChanged: () => void; onError: (e: unknown) => void }) {
+// Without the "<view>-<date>-<time>-" the library adds, so images read by their own names.
+const fileName = (r: Reference) => r.path.split("/").pop()?.replace(/^[a-z_]+-\d{8}-\d{6}-/, "");
+
+function ImagePicker({ label, value, options, none, onChange }: {
+  label: string;
+  value: number | null;
+  options: Reference[];
+  none?: string;
+  onChange: (id: number | null) => void;
+}) {
+  return (
+    <Field label={label}>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        title={options.find((r) => r.id === value)?.path.split("/").pop()}
+        className="max-w-40 rounded border border-edge bg-[#141517] px-1 py-0.5"
+      >
+        {none && <option value="">{none}</option>}
+        {options.map((r) => (
+          <option key={r.id} value={r.id}>
+            {fileName(r)}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
+  actor: Actor;
+  multiviewFound: boolean;
+  onChanged: () => void;
+  onError: (e: unknown) => void;
+}) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [referenceId, setReferenceId] = useState<number | null>(null);
+  const [sideId, setSideId] = useState<number | null>(null);
+  const [threeQuarterId, setThreeQuarterId] = useState<number | null>(null);
+  const [model, setModel] = useState<Model>("trellis2");
   const [busy, setBusy] = useState(false);
   const fronts = actor.references.filter((r) => r.view === "front" || r.view === "unsorted");
+  // Newest first, so the default is the latest photo of each view.
+  const sides = actor.references.filter((r) => r.view === "side").reverse();
+  const threeQuarters = actor.references.filter((r) => r.view === "three_quarter").reverse();
+  const canMultiview = multiviewFound && sides.length + threeQuarters.length > 0;
+  const multiview = model === "pixal3d";
 
   useEffect(() => {
     setReferenceId(fronts[0]?.id ?? null);
-    // Reset when switching actors or when a new front image arrives.
-  }, [actor.id, fronts[0]?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSideId(sides[0]?.id ?? null);
+    setThreeQuarterId(threeQuarters[0]?.id ?? null);
+    // Multi-view gives the better shape (MetaHuman only takes the shape), so it's the default when it can run.
+    setModel(canMultiview ? "pixal3d" : "trellis2");
+    // Reset when switching actors or when new images arrive.
+  }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (multiview && !settings.pipeline.endsWith("_cascade")) setSettings((s) => ({ ...s, pipeline: "1024_cascade" }));
+  }, [multiview, settings.pipeline]);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setSettings((s) => ({ ...s, [key]: value }));
 
   return (
     <Section title="Generate">
       {fronts.length === 0 ? (
-        <p className="text-neutral-500">Add a front image first. TRELLIS.2 builds the head from one front photo.</p>
+        <p className="text-neutral-500">Add a front image first. Every head is built from a front photo.</p>
       ) : (
         <>
-          <Field label="Front image">
+          <Field label="Method">
             <select
-              value={referenceId ?? ""}
-              onChange={(e) => setReferenceId(Number(e.target.value))}
+              value={model}
+              onChange={(e) => setModel(e.target.value as Model)}
               className="max-w-40 rounded border border-edge bg-[#141517] px-1 py-0.5"
             >
-              {fronts.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.path.split("/").pop()}
-                </option>
-              ))}
+              <option value="trellis2">Front only (TRELLIS.2)</option>
+              <option value="pixal3d" disabled={!canMultiview}>
+                Multi-view (Pixal3D)
+              </option>
             </select>
           </Field>
+          {!canMultiview && (
+            <p className="mb-1 text-xs text-neutral-500">
+              {multiviewFound
+                ? "Add a Side or Three-quarter image for multi-view: it follows the profile more closely."
+                : "Multi-view needs Pixal3D installed (see docs/multiview.md)."}
+            </p>
+          )}
+          <ImagePicker label="Front image" value={referenceId} options={fronts} onChange={setReferenceId} />
+          {multiview && (
+            <>
+              <ImagePicker label="Side image" value={sideId} options={sides} none="None" onChange={setSideId} />
+              <ImagePicker
+                label="Three-quarter image"
+                value={threeQuarterId}
+                options={threeQuarters}
+                none="None"
+                onChange={setThreeQuarterId}
+              />
+            </>
+          )}
           <Field label="Texture">
             <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
           </Field>
-          <Field label="Crop to head and neck">
-            <input type="checkbox" checked={settings.crop} onChange={(e) => set("crop", e.target.checked)} />
-          </Field>
+          {!multiview && (
+            <Field label="Crop to head and neck">
+              <input type="checkbox" checked={settings.crop} onChange={(e) => set("crop", e.target.checked)} />
+            </Field>
+          )}
           <Field label="Resolution">
             <select
               value={settings.pipeline}
@@ -89,9 +171,9 @@ function GenerateForm({ actor, onChanged, onError }: { actor: Actor; onChanged: 
               className="rounded border border-edge bg-[#141517] px-1 py-0.5"
             >
               <option value="1024_cascade">1024 (recommended)</option>
-              <option value="1536_cascade">1536 (panels on skin)</option>
-              <option value="1024">1024, single pass</option>
-              <option value="512">512, quick test</option>
+              <option value="1536_cascade">1536{multiview ? "" : " (panels on skin)"}</option>
+              {!multiview && <option value="1024">1024, single pass</option>}
+              {!multiview && <option value="512">512, quick test</option>}
             </select>
           </Field>
           <Field label={`Smoothing ${settings.smooth.toFixed(1)}`}>
@@ -115,11 +197,18 @@ function GenerateForm({ actor, onChanged, onError }: { actor: Actor; onChanged: 
           <Button
             variant="primary"
             className="mt-2 w-full"
-            disabled={busy || referenceId == null}
+            disabled={busy || referenceId == null || (multiview && sideId == null && threeQuarterId == null)}
             onClick={async () => {
               setBusy(true);
               try {
-                await api.generate(actor.id, referenceId!, settings);
+                const { crop, ...common } = settings;
+                await api.generate(
+                  actor.id,
+                  referenceId!,
+                  multiview
+                    ? { ...common, model, side_id: sideId, three_quarter_id: threeQuarterId }
+                    : { ...common, crop, model },
+                );
                 onChanged();
               } catch (e) {
                 onError(e);
@@ -130,14 +219,17 @@ function GenerateForm({ actor, onChanged, onError }: { actor: Actor; onChanged: 
           >
             Generate head
           </Button>
-          <p className="mt-2 text-xs text-neutral-500">Keep Unreal closed while it runs; they share the GPU.</p>
+          <p className="mt-2 text-xs text-neutral-500">
+            Keep Unreal closed while it runs; they share the GPU.
+            {multiview && " Multi-view takes about 5 minutes and 11 GB of GPU memory. Views from one shoot work best."}
+          </p>
         </>
       )}
     </Section>
   );
 }
 
-export function Inspector({ actor, selection, onSelect, onChanged, onError }: Props) {
+export function Inspector({ actor, selection, onSelect, onChanged, onError, multiviewFound }: Props) {
   if (!actor) return <aside className="w-80 shrink-0 border-l border-edge bg-panel" />;
 
   const reference = selection?.kind === "reference" ? actor.references.find((r) => r.id === selection.id) : undefined;
@@ -146,7 +238,7 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError }: Pr
 
   return (
     <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-edge bg-panel">
-      <GenerateForm actor={actor} onChanged={onChanged} onError={onError} />
+      <GenerateForm actor={actor} multiviewFound={multiviewFound} onChanged={onChanged} onError={onError} />
 
       {reference && (
         <Section title="Image">
@@ -228,6 +320,9 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError }: Pr
           </Field>
           <Field label="Made">
             <span>{formatDate(generation.record.started ?? generation.created)}</span>
+          </Field>
+          <Field label="Method">
+            <span>{generation.record.model === "pixal3d" ? "Multi-view (Pixal3D)" : "Front only (TRELLIS.2)"}</span>
           </Field>
           <Field label="Resolution">
             <span>{generation.record.pipeline ?? "–"}</span>

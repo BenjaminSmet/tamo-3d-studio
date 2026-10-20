@@ -19,6 +19,7 @@ or inside Blender directly:
 
 import argparse
 import glob
+import math
 import os
 import shutil
 import subprocess
@@ -71,6 +72,9 @@ def launch(argv: list[str]) -> None:
     parser.add_argument("--faces", type=int, default=TARGET_FACES)
     parser.add_argument("--smooth", type=float, default=1.0,
                         help="smoothing strength: 0 off, 1 removes skull bumps and brow ridges, 2 stronger")
+    parser.add_argument("--turn", type=float, default=0.0,
+                        help="degrees to turn the model about the vertical axis first, for models whose "
+                             "face does not point toward -Y after import (Pixal3D: 180)")
     parser.add_argument("--blender", help="path to the Blender executable")
     args = parser.parse_args(argv)
 
@@ -81,7 +85,7 @@ def launch(argv: list[str]) -> None:
         paths = [subprocess.check_output(["wslpath", "-w", p], text=True).strip() for p in paths]
     script, model, output = paths
     cmd = [blender, "-b", "--factory-startup", "--python", script, "--", model, output, str(args.faces),
-           str(args.smooth)]
+           str(args.smooth), str(args.turn)]
     sys.exit(subprocess.run(cmd).returncode)
 
 
@@ -157,12 +161,12 @@ def smooth(points, edges, boundary, strength: float):
     return p
 
 
-def export(model: str, output: str, faces: int, smooth_strength: float = 1.0) -> None:
+def export(model: str, output: str, faces: int, smooth_strength: float = 1.0, turn: float = 0.0) -> None:
     """Inside Blender."""
     import bmesh
     import bpy
     import numpy as np
-    from mathutils import Vector
+    from mathutils import Matrix, Vector
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=model)   # glTF Y up becomes Blender Z up, face toward -Y
@@ -170,9 +174,18 @@ def export(model: str, output: str, faces: int, smooth_strength: float = 1.0) ->
     if len(meshes) != 1:
         sys.exit(f"Expected one mesh in {model}, found {len(meshes)}")
     ob = meshes[0]
+    # Bake the world transform, parents included (Pixal3D's GLB has a node above the mesh), into the
+    # mesh data, so everything below works in world coordinates.
+    ob.data.transform(ob.matrix_world)
+    ob.parent = None
+    ob.matrix_world = Matrix.Identity(4)
+    for other in [o for o in bpy.context.scene.objects if o is not ob]:
+        bpy.data.objects.remove(other)
+    if turn:
+        ob.data.transform(Matrix.Rotation(math.radians(turn), 4, "Z"))
+    ob.data.update()
     bpy.context.view_layer.objects.active = ob
     ob.select_set(True)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
     # glTF splits vertices along UV seams; join them so the surface is one piece (UVs are kept per corner).
     bm = bmesh.new()
@@ -240,6 +253,6 @@ if __name__ == "__main__":
     else:
         args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
         if len(args) < 2:
-            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces] [smooth]")
+            sys.exit("usage: blender -b --python export_metahuman.py -- model.glb out.fbx [faces] [smooth] [turn]")
         export(args[0], args[1], int(args[2]) if len(args) > 2 else TARGET_FACES,
-               float(args[3]) if len(args) > 3 else 1.0)
+               float(args[3]) if len(args) > 3 else 1.0, float(args[4]) if len(args) > 4 else 0.0)

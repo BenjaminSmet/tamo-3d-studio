@@ -1,4 +1,5 @@
-"""Stands in for run_phase1.py in tests: prints the same messages and writes a run folder.
+"""Stands in for run_phase1.py and run_multiview.py in tests: prints the same messages and
+writes a run folder. Multi-view is the call with --front.
 
 FAKE_ENGINE=fail makes it fail; FAKE_ENGINE=slow makes it wait so it can be cancelled.
 FAKE_GLB copies a real model in, for trying the interface without a GPU.
@@ -13,6 +14,9 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image")
+parser.add_argument("--front")
+parser.add_argument("--side")
+parser.add_argument("--three-quarter")
 parser.add_argument("--actor")
 parser.add_argument("--project")
 parser.add_argument("--library")
@@ -44,8 +48,10 @@ glb = os.environ.get("FAKE_GLB")
 (args.run_dir / "model.glb").write_bytes(Path(glb).read_bytes() if glb else b"glTF")
 print("Exporting the MetaHuman-aligned head with Blender...", flush=True)
 (args.run_dir / "head_metahuman.fbx").write_bytes(b"FBX")
+record = {"model": "pixal3d", "source_images": {"front": args.front, "side": args.side,
+                                                 "three_quarter": args.three_quarter}} if args.front else {}
 (args.run_dir / "run.json").write_text(json.dumps({
-    "source_image": args.image, "mode": "textured" if args.texture else "geometry",
+    **record, "source_image": args.image or args.front, "mode": "textured" if args.texture else "geometry",
     "pipeline": args.pipeline, "seed": int(args.seed), "smooth": float(args.smooth),
     "started": "2026-10-18T21:00:00", "seconds": 1, "result": "ok",
 }))

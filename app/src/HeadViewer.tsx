@@ -3,7 +3,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-type Props = { url: string | null; shading: "texture" | "clay" };
+// turn: the model faces away from the camera (Pixal3D's do), so turn it round to face it.
+type Props = { url: string | null; shading: "texture" | "clay"; turn?: boolean };
 
 type Loaded = { model: THREE.Object3D; textured: Map<THREE.Mesh, THREE.Material | THREE.Material[]> };
 
@@ -24,8 +25,10 @@ function dispose({ model, textured }: Loaded) {
 
 // One reusable viewer: loads a GLB, frames it, and orbits. Later it can show bodies,
 // props and sets too, so it knows nothing about heads beyond the default camera angle.
-export function HeadViewer({ url, shading }: Props) {
+export function HeadViewer({ url, shading, turn = false }: Props) {
   const mount = useRef<HTMLDivElement>(null);
+  const turnRef = useRef(turn);
+  turnRef.current = turn;   // goes with url, which changes in the same render
   const sceneRef = useRef<{
     scene: THREE.Scene;
     shown: Loaded | null;
@@ -134,6 +137,7 @@ export function HeadViewer({ url, shading }: Props) {
     new GLTFLoader().load(
       url,
       (gltf) => {
+        if (turnRef.current) gltf.scene.rotation.y = Math.PI;
         const loaded: Loaded = { model: gltf.scene, textured: new Map() };
         gltf.scene.traverse((child) => {
           if (child instanceof THREE.Mesh) loaded.textured.set(child, child.material);

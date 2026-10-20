@@ -139,7 +139,7 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onDeleted,
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <HeadViewer url={modelUrl} shading={shading} />
+        <HeadViewer url={modelUrl} shading={shading} turn={shown?.record.model === "pixal3d"} />
         {running && (
           <div className="absolute left-4 right-4 top-4 rounded border border-edge bg-panel/90 p-3 md:left-auto md:w-80">
             <div className="mb-2 flex justify-between text-xs">
@@ -170,7 +170,9 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onDeleted,
               <span>{formatDate(g.record.started ?? g.created)}</span>
             </div>
             <div className={g.record.result === "ok" ? "text-neutral-500" : "text-red-400"}>
-              {g.record.result === "ok" ? `${g.record.pipeline ?? ""} · ${g.record.mode ?? ""}` : "failed"}
+              {g.record.result === "ok"
+                ? `${g.record.model === "pixal3d" ? "multi-view · " : ""}${g.record.pipeline ?? ""} · ${g.record.mode ?? ""}`
+                : "failed"}
             </div>
           </button>
         ))}

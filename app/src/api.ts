@@ -35,7 +35,16 @@ export type Reference = {
   created: string;
 };
 
+export type Model = "trellis2" | "pixal3d";
+
 export type Settings = { texture: boolean; pipeline: string; seed: number; smooth: number; crop: boolean };
+
+// What a job was started with: the settings plus the model, and for multi-view its turned images.
+export type JobSettings = Partial<Settings> & {
+  model?: Model;
+  side_id?: number | null;
+  three_quarter_id?: number | null;
+};
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
@@ -44,7 +53,7 @@ export type Job = {
   actor_id: number;
   actor_name?: string;
   reference_id: number;
-  settings: Settings;
+  settings: JobSettings;
   status: JobStatus;
   stage: string | null;
   progress: number;
@@ -57,6 +66,7 @@ export type Job = {
 };
 
 export type RunRecord = {
+  model?: Model;
   source_image?: string;
   mode?: string;
   pipeline?: string;
@@ -92,6 +102,7 @@ export type Health = {
   ok: boolean;
   engine: string;
   engine_found: boolean;
+  multiview_found?: boolean;
   library: string;
   library_windows_path: string | null;
   trash_windows_path: string | null;
@@ -148,7 +159,7 @@ export const api = {
     request<Reference>(`/api/actors/${actorId}/references`, form({ file, view })),
   setReferenceView: (referenceId: number, view: View) =>
     request<Reference>(`/api/references/${referenceId}`, form({ view }, "PATCH")),
-  generate: (actorId: number, referenceId: number, settings: Settings) =>
+  generate: (actorId: number, referenceId: number, settings: JobSettings) =>
     request<Job>(`/api/actors/${actorId}/generations`, json({ reference_id: referenceId, ...settings })),
   jobs: (active = false) => request<Job[]>(`/api/jobs${active ? "?active=true" : ""}`),
   cancelJob: (jobId: number) => request<Job>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
