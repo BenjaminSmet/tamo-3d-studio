@@ -20,6 +20,9 @@ class Settings:
     multiview_python: Path | None = None
     multiview_script: Path | None = None
     pixal3d: Path | None = None
+    # The face model (GNM) has its own Python 3.12 environment; see docs/facemodel.md.
+    facemodel_python: Path | None = None
+    facemodel_script: Path | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -40,4 +43,6 @@ class Settings:
             multiview_python=path("TAMO_MULTIVIEW_PYTHON", pixal3d / ".venv" / "bin" / "python"),
             multiview_script=path("TAMO_MULTIVIEW_SCRIPT", REPO_ROOT / "ai-engine" / "phase4" / "run_multiview.py"),
             pixal3d=pixal3d,
+            facemodel_python=path("TAMO_FACEMODEL_PYTHON", Path.home() / "tamo-gnm" / ".venv" / "bin" / "python"),
+            facemodel_script=path("TAMO_FACEMODEL_SCRIPT", REPO_ROOT / "ai-engine" / "phase5" / "run_facemodel.py"),
         )

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .config import Settings
 from .db import Database, generation_view, job_view, now
-from .engine import TURNED_VIEWS, Pixal3DEngine, Trellis2Engine
+from .engine import TURNED_VIEWS, GnmEngine, Pixal3DEngine, Trellis2Engine
 from . import updates
 from .jobs import JobQueue
 from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, move_to_trash,
@@ -45,8 +45,8 @@ class NewActor(BaseModel):
 
 class NewGeneration(BaseModel):
     reference_id: int
-    model: str = "trellis2"            # or "pixal3d": multi-view, with a side and/or three-quarter image
-    side_id: int | None = None         # multi-view only; the actor's newest of each view when left out
+    model: str = "trellis2"            # "pixal3d": multi-view, with a side and/or three-quarter image; "gnm": face model
+    side_id: int | None = None         # multi-view and face model; the actor's newest of each view when left out
     three_quarter_id: int | None = None
     texture: bool | None = None
     pipeline: str | None = None
@@ -58,7 +58,7 @@ class NewGeneration(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.database)
-    engines = {e.name: e for e in (Trellis2Engine(settings), Pixal3DEngine(settings))}
+    engines = {e.name: e for e in (Trellis2Engine(settings), Pixal3DEngine(settings), GnmEngine(settings))}
     queue = JobQueue(db, engines, settings.library, settings.logs)
 
     @asynccontextmanager
@@ -107,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "engine": "trellis2",
             "engine_found": engines["trellis2"].found(),
             "multiview_found": engines["pixal3d"].found(),
+            "facemodel_found": engines["gnm"].found(),
             "library": str(settings.library),
             "library_windows_path": windows_path(str(settings.library)),
             "trash_windows_path": windows_path(str(trash_dir(settings.library))),
@@ -238,12 +239,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 elif not db.one("SELECT id FROM reference_images WHERE id = ? AND actor_id = ?",
                                 (options[key], actor_id)):
                     raise HTTPException(404, f"That {view.replace('_', '-')} image doesn't belong to this actor.")
-            if all(options[f"{view}_id"] is None for view in engine.views):
+            if engine.needs_turned_view and all(options[f"{view}_id"] is None for view in engine.views):
                 raise HTTPException(422, "Multi-view needs a side or three-quarter image of this actor.")
         else:
             for view in TURNED_VIEWS:
                 if options.pop(f"{view}_id") is not None:
-                    raise HTTPException(422, "Only multi-view uses side and three-quarter images.")
+                    raise HTTPException(422, "Only multi-view and the face model use side and three-quarter images.")
         try:
             options = {**engine.validate(options), "model": engine.name}
         except ValueError as error:

@@ -1,5 +1,6 @@
-"""Stands in for run_phase1.py and run_multiview.py in tests: prints the same messages and
-writes a run folder. Multi-view is the call with --front.
+"""Stands in for run_phase1.py, run_multiview.py and run_facemodel.py in tests: prints the same
+messages and writes a run folder. Multi-view is the call with --front, the face model the call
+with --engine-python.
 
 FAKE_ENGINE=fail makes it fail; FAKE_ENGINE=slow makes it wait so it can be cancelled.
 FAKE_GLB copies a real model in, for trying the interface without a GPU.
@@ -21,10 +22,11 @@ parser.add_argument("--actor")
 parser.add_argument("--project")
 parser.add_argument("--library")
 parser.add_argument("--espalier")
+parser.add_argument("--engine-python")
 parser.add_argument("--run-dir", type=Path)
 parser.add_argument("--pipeline")
 parser.add_argument("--seed")
-parser.add_argument("--smooth")
+parser.add_argument("--smooth", default="0")
 parser.add_argument("--texture", action="store_true")
 parser.add_argument("--no-crop", action="store_true")
 args = parser.parse_args()
@@ -48,7 +50,7 @@ glb = os.environ.get("FAKE_GLB")
 (args.run_dir / "model.glb").write_bytes(Path(glb).read_bytes() if glb else b"glTF")
 print("Exporting the MetaHuman-aligned head with Blender...", flush=True)
 (args.run_dir / "head_metahuman.fbx").write_bytes(b"FBX")
-record = {"model": "pixal3d", "source_images": {"front": args.front, "side": args.side,
+record = {"model": "gnm" if args.engine_python else "pixal3d", "source_images": {"front": args.front, "side": args.side,
                                                  "three_quarter": args.three_quarter}} if args.front else {}
 (args.run_dir / "run.json").write_text(json.dumps({
     **record, "source_image": args.image or args.front, "mode": "textured" if args.texture else "geometry",

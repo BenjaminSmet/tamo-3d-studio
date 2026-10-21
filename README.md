@@ -20,7 +20,9 @@ backend/              # FastAPI server and job queue
 ai-engine/
 ├── adapters/         # one adapter per model (Phase 2+)
 ├── models/           # downloaded weights (not committed)
-└── phase1/           # Phase 1 scripts
+├── phase1/           # Phase 1 scripts: one portrait to a TRELLIS.2 head
+├── phase4/           # multi-view heads with Pixal3D (docs/multiview.md)
+└── phase5/           # face model heads with GNM (docs/facemodel.md)
 library/projects/     # your images and meshes (not committed)
 database/             # studio.sqlite (not committed)
 docs/
