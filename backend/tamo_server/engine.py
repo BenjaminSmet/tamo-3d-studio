@@ -209,9 +209,10 @@ class GnmEngine:
     needs_turned_view = False
     defaults = {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None, "three_quarter_id": None}
 
-    # Estimated from the parts' timings on an RTX 5070 Ti (about 6.5 minutes): TRELLIS.2 without
-    # a texture about 2.5 minutes, the fit about 3 (most of it in five stages of loosening the
-    # face model, each printed when done), the hybrid and the MetaHuman export 15 s each.
+    # Timed on an RTX 5070 Ti (about 5.5 minutes): TRELLIS.2 without a texture about 2 minutes,
+    # most of it loading the models, which prints nothing; the fit about 2.5 minutes (most of it in
+    # five stages of loosening the face model, each printed when done); the hybrid about 30 s and
+    # the MetaHuman export a few seconds.
     STAGES = [
         ("Building the rough head with TRELLIS.2", "Building a rough head", 0.01),
         ("Cropped to head", "Building a rough head", 0.04),
@@ -221,16 +222,16 @@ class GnmEngine:
         ("exported /", "Saving the rough head", 0.40),
         ("Removing background from the turned views", "Cutting out the side views", 0.41),
         ("Fitting the face model", "Fitting the face model: cameras", 0.45),
-        ("[rigid]", "Fitting the face model: head shape", 0.49),
-        ("[identity]", "Fitting the face model: head shape", 0.53),
-        ("[v1]", "Fitting the face model: face detail", 0.61),
-        ("[dense reg 5.0]", "Fitting the face model: face detail", 0.67),
-        ("[dense reg 2.0]", "Fitting the face model: face detail", 0.72),
-        ("[dense reg 1.0]", "Fitting the face model: face detail", 0.78),
-        ("[dense reg 0.5]", "Fitting the face model: face detail", 0.83),
-        ("[dense reg 0.25]", "Fitting the face model: face detail", 0.89),
-        ("Adding the face shape", "Adding the face shape", 0.90),
-        ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.94),
+        ("[rigid]", "Fitting the face model: head shape", 0.47),
+        ("[identity]", "Fitting the face model: head shape", 0.51),
+        ("[v1]", "Fitting the face model: face detail", 0.58),
+        ("[dense reg 5.0]", "Fitting the face model: face detail", 0.64),
+        ("[dense reg 2.0]", "Fitting the face model: face detail", 0.70),
+        ("[dense reg 1.0]", "Fitting the face model: face detail", 0.75),
+        ("[dense reg 0.5]", "Fitting the face model: face detail", 0.80),
+        ("[dense reg 0.25]", "Fitting the face model: face detail", 0.86),
+        ("Adding the face shape", "Adding the face shape", 0.87),
+        ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.98),
         ("Face model run finished", "Finishing", 0.99),
     ]
     BARS = [

@@ -66,7 +66,7 @@ Your existing runs under `library/projects/` show up automatically as versions.
    Multi-view needs Pixal3D installed ([multiview.md](multiview.md)).
    **Face model (GNM)** fits Google's head model to the front photo and, when there are
    some, the Side and Three-quarter images: a smooth skull and real lips, so MetaHuman's solve
-   has no bumps and no teeth poking through. It takes about 7 minutes and builds shape only.
+   has no bumps and no teeth poking through. It takes about 5.5 minutes and builds shape only.
    It needs the face model installed ([facemodel.md](facemodel.md)).
    Press **Generate head**. Progress shows in the viewer and in the queue on the left.
 4. Turn the head in the viewer (textured or clay), and download **MetaHuman head (FBX)**.

@@ -147,7 +147,7 @@ def test_face_model_progress_runs_through_both_parts():
     fractions = [f for _, f in seen]
     assert fractions == sorted(fractions)
     assert ("Generating: shape detail", 0.34) in seen
-    assert ("Fitting the face model: face detail", 0.89) in seen
+    assert ("Fitting the face model: face detail", 0.86) in seen
     assert seen[-1] == ("Finishing", 0.99)
 
 

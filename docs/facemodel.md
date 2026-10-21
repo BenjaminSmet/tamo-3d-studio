@@ -28,11 +28,11 @@ weights into `~/.cache/gnm/models`. Restart the app, then pick **Face model
 
 ## How a run works
 
-1. A front-only TRELLIS.2 head without a texture (`trellis/` in the run folder), about 2.5
-   minutes on the GPU.
+1. A front-only TRELLIS.2 head without a texture (`trellis/` in the run folder), about 2
+   minutes on the GPU (about 4 GB).
 2. The side and three-quarter photos are cut out; one that faces right is mirrored, since GNM
    is symmetric.
-3. GNM is fitted to the photos (`fit_gnm_v2.py`, about 3 minutes on the CPU). Each photo gets
+3. GNM is fitted to the photos (`fit_gnm_v2.py`, about 2.5 minutes on the CPU). Each photo gets
    its own camera. MediaPipe's face points on the front and three-quarter photos place the eyes,
    nose and lips, and the outline of the head in every photo shapes the skull, above the chin
    only and never where the photo cuts the head off. The lips are matched by their edges (the
@@ -67,3 +67,7 @@ lash ridges: tune the eyes in MetaHuman with its eye curves.
 The first MetaHuman built from a hybrid head came out really close to the photo, with a
 clean skull and closed lips. The lips are fuller than GNM's average but still a little
 thinner than the photos.
+
+With the front photo alone (Nia), the fit to the photo is as good, but the skull comes out
+about 8 mm shorter front to back, the profile flatter and the chin weaker: add side and
+three-quarter photos when you have them.

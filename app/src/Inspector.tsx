@@ -242,7 +242,7 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
               " Multi-view takes about 5 minutes and 11 GB of GPU memory. Use views from the same shoot as the front," +
                 " each showing the whole head, back of the skull included."}
             {facemodel &&
-              " The face model takes about 7 minutes: a rough TRELLIS.2 head first, then Google's GNM head fitted to" +
+              " The face model takes about 5.5 minutes: a rough TRELLIS.2 head first, then Google's GNM head fitted to" +
                 " the photos. Side and three-quarter photos shape the skull. It builds shape only; MetaHuman makes" +
                 " the skin."}
           </p>

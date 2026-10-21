@@ -111,8 +111,12 @@ def main() -> None:
     if run_logged(cmd, log) != 0 or not (trellis / "model.glb").is_file():
         print("TRELLIS.2 failed; see trellis/ in the run folder.")
         finish("failed")
-    # The input image the app shows for this version.
+    # The input image the app shows for this version, and TRELLIS.2's GPU use (the fit runs on the CPU).
     shutil.copy2(trellis / "input_rgba.png", run_dir / "input_rgba.png")
+    trellis_record = json.loads((trellis / "run.json").read_text())
+    for key in ("vram_baseline_mib", "vram_peak_mib", "vram_peak_above_baseline_mib"):
+        if key in trellis_record:
+            record[key] = trellis_record[key]
 
     print("Removing background from the turned views...", flush=True)
     views = run_dir / "views"
@@ -142,6 +146,10 @@ def main() -> None:
     if run_logged(cmd, log) != 0:
         finish("failed")
     record["hybrid"] = json.loads((hybrid / "hybrid.json").read_text())
+    # Only trellis/model.glb is needed from here on; Espalier-2's raw latents and the OBJ copy are most of the
+    # run's size.
+    for leftover in ("raw.pt", "model.obj"):
+        (trellis / leftover).unlink(missing_ok=True)
 
     glb = run_dir / "model.glb"
     shutil.copy2(hybrid / "gnm_head.glb", glb)
