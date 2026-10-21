@@ -105,7 +105,10 @@ def main() -> None:
             azimuth = TURN[name] if direction == "left" else -TURN[name]
             print(f"{name.replace('_', '-').capitalize()} view faces {direction}: camera at {azimuth:+.0f} degrees.")
         views.append((name, rgba, azimuth))
-    framing = write_views(views, run_dir / "views", args.fov)
+    try:
+        framing = write_views(views, run_dir / "views", args.fov)
+    except ValueError as error:
+        sys.exit(str(error))
     record["views"] = framing
     heights = [v["head_height_px"] for v in framing["views"]]
     print("Cropped to head and neck.")

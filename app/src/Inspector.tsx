@@ -3,6 +3,7 @@ import {
   api,
   DEFAULT_SETTINGS,
   generationFileUrl,
+  MODEL_NAMES,
   VIEWS,
   type Actor,
   type Model,
@@ -21,6 +22,7 @@ type Props = {
   onChanged: () => void;
   onError: (e: unknown) => void;
   multiviewFound: boolean;
+  facemodelFound: boolean;
 };
 
 const FILE_LABELS: Record<string, string> = {
@@ -84,9 +86,10 @@ function ImagePicker({ label, value, options, none, onChange }: {
   );
 }
 
-function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
+function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onError }: {
   actor: Actor;
   multiviewFound: boolean;
+  facemodelFound: boolean;
   onChanged: () => void;
   onError: (e: unknown) => void;
 }) {
@@ -102,13 +105,16 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
   const threeQuarters = actor.references.filter((r) => r.view === "three_quarter").reverse();
   const canMultiview = multiviewFound && sides.length + threeQuarters.length > 0;
   const multiview = model === "pixal3d";
+  // The face model uses the turned views when there are some, and builds shape only.
+  const facemodel = model === "gnm";
+  const turned = multiview || facemodel;
 
   useEffect(() => {
     setReferenceId(fronts[0]?.id ?? null);
     setSideId(sides[0]?.id ?? null);
     setThreeQuarterId(threeQuarters[0]?.id ?? null);
-    // Multi-view gives the better shape (MetaHuman only takes the shape), so it's the default when it can run.
-    setModel(canMultiview ? "pixal3d" : "trellis2");
+    // Front only is the default: multi-view only does better with uncropped turned views from the same shoot.
+    setModel("trellis2");
     // Reset when switching actors or when new images arrive.
   }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -130,21 +136,24 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
               onChange={(e) => setModel(e.target.value as Model)}
               className="max-w-40 rounded border border-edge bg-[#141517] px-1 py-0.5"
             >
-              <option value="trellis2">Front only (TRELLIS.2)</option>
+              <option value="trellis2">{MODEL_NAMES.trellis2}</option>
               <option value="pixal3d" disabled={!canMultiview}>
-                Multi-view (Pixal3D)
+                {MODEL_NAMES.pixal3d}
+              </option>
+              <option value="gnm" disabled={!facemodelFound}>
+                {MODEL_NAMES.gnm}
               </option>
             </select>
           </Field>
-          {!canMultiview && (
+          {!canMultiview && !facemodel && (
             <p className="mb-1 text-xs text-neutral-500">
               {multiviewFound
-                ? "Add a Side or Three-quarter image for multi-view: it follows the profile more closely."
+                ? "Add a Side or Three-quarter image for multi-view."
                 : "Multi-view needs Pixal3D installed (see docs/multiview.md)."}
             </p>
           )}
           <ImagePicker label="Front image" value={referenceId} options={fronts} onChange={setReferenceId} />
-          {multiview && (
+          {turned && (
             <>
               <ImagePicker label="Side image" value={sideId} options={sides} none="None" onChange={setSideId} />
               <ImagePicker
@@ -156,36 +165,42 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
               />
             </>
           )}
-          <Field label="Texture">
-            <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
-          </Field>
-          {!multiview && (
+          {!facemodel && (
+            <Field label="Texture">
+              <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
+            </Field>
+          )}
+          {!turned && (
             <Field label="Crop to head and neck">
               <input type="checkbox" checked={settings.crop} onChange={(e) => set("crop", e.target.checked)} />
             </Field>
           )}
-          <Field label="Resolution">
-            <select
-              value={settings.pipeline}
-              onChange={(e) => set("pipeline", e.target.value)}
-              className="rounded border border-edge bg-[#141517] px-1 py-0.5"
-            >
-              <option value="1024_cascade">1024 (recommended)</option>
-              <option value="1536_cascade">1536{multiview ? "" : " (panels on skin)"}</option>
-              {!multiview && <option value="1024">1024, single pass</option>}
-              {!multiview && <option value="512">512, quick test</option>}
-            </select>
-          </Field>
-          <Field label={`Smoothing ${settings.smooth.toFixed(1)}`}>
-            <input
-              type="range"
-              min={0}
-              max={2}
-              step={0.5}
-              value={settings.smooth}
-              onChange={(e) => set("smooth", Number(e.target.value))}
-            />
-          </Field>
+          {!facemodel && (
+            <Field label="Resolution">
+              <select
+                value={settings.pipeline}
+                onChange={(e) => set("pipeline", e.target.value)}
+                className="rounded border border-edge bg-[#141517] px-1 py-0.5"
+              >
+                <option value="1024_cascade">1024 (recommended)</option>
+                <option value="1536_cascade">1536{multiview ? "" : " (panels on skin)"}</option>
+                {!multiview && <option value="1024">1024, single pass</option>}
+                {!multiview && <option value="512">512, quick test</option>}
+              </select>
+            </Field>
+          )}
+          {!facemodel && (
+            <Field label={`Smoothing ${settings.smooth.toFixed(1)}`}>
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={0.5}
+                value={settings.smooth}
+                onChange={(e) => set("smooth", Number(e.target.value))}
+              />
+            </Field>
+          )}
           <Field label="Seed">
             <input
               type="number"
@@ -205,9 +220,11 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
                 await api.generate(
                   actor.id,
                   referenceId!,
-                  multiview
-                    ? { ...common, model, side_id: sideId, three_quarter_id: threeQuarterId }
-                    : { ...common, crop, model },
+                  facemodel
+                    ? { model, seed: settings.seed, side_id: sideId, three_quarter_id: threeQuarterId }
+                    : multiview
+                      ? { ...common, model, side_id: sideId, three_quarter_id: threeQuarterId }
+                      : { ...common, crop, model },
                 );
                 onChanged();
               } catch (e) {
@@ -221,7 +238,13 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
           </Button>
           <p className="mt-2 text-xs text-neutral-500">
             Keep Unreal closed while it runs; they share the GPU.
-            {multiview && " Multi-view takes about 5 minutes and 11 GB of GPU memory. Views from one shoot work best."}
+            {multiview &&
+              " Multi-view takes about 5 minutes and 11 GB of GPU memory. Use views from the same shoot as the front," +
+                " each showing the whole head, back of the skull included."}
+            {facemodel &&
+              " The face model takes about 5.5 minutes: a rough TRELLIS.2 head first, then Google's GNM head fitted to" +
+                " the photos. Side and three-quarter photos shape the skull. It builds shape only; MetaHuman makes" +
+                " the skin."}
           </p>
         </>
       )}
@@ -229,7 +252,7 @@ function GenerateForm({ actor, multiviewFound, onChanged, onError }: {
   );
 }
 
-export function Inspector({ actor, selection, onSelect, onChanged, onError, multiviewFound }: Props) {
+export function Inspector({ actor, selection, onSelect, onChanged, onError, multiviewFound, facemodelFound }: Props) {
   if (!actor) return <aside className="w-80 shrink-0 border-l border-edge bg-panel" />;
 
   const reference = selection?.kind === "reference" ? actor.references.find((r) => r.id === selection.id) : undefined;
@@ -238,7 +261,13 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError, mult
 
   return (
     <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-edge bg-panel">
-      <GenerateForm actor={actor} multiviewFound={multiviewFound} onChanged={onChanged} onError={onError} />
+      <GenerateForm
+        actor={actor}
+        multiviewFound={multiviewFound}
+        facemodelFound={facemodelFound}
+        onChanged={onChanged}
+        onError={onError}
+      />
 
       {reference && (
         <Section title="Image">
@@ -322,7 +351,7 @@ export function Inspector({ actor, selection, onSelect, onChanged, onError, mult
             <span>{formatDate(generation.record.started ?? generation.created)}</span>
           </Field>
           <Field label="Method">
-            <span>{generation.record.model === "pixal3d" ? "Multi-view (Pixal3D)" : "Front only (TRELLIS.2)"}</span>
+            <span>{MODEL_NAMES[generation.record.model ?? "trellis2"]}</span>
           </Field>
           <Field label="Resolution">
             <span>{generation.record.pipeline ?? "–"}</span>

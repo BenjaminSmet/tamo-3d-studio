@@ -27,7 +27,7 @@ def client(tmp_path, library, monkeypatch):
         library=library, database=tmp_path / "db" / "studio.sqlite", logs=tmp_path / "db" / "logs",
         engine_python=Path(sys.executable), engine_script=FAKE_ENGINE, espalier=tmp_path,
         app_dist=tmp_path / "no-dist", multiview_python=Path(sys.executable), multiview_script=FAKE_ENGINE,
-        pixal3d=tmp_path,
+        pixal3d=tmp_path, facemodel_python=Path(sys.executable), facemodel_script=FAKE_ENGINE,
     )
     with TestClient(create_app(settings)) as test_client:
         yield test_client
@@ -103,6 +103,52 @@ def test_multiview_uses_the_actors_turned_views(client, library):
     assert f"--front {front['path']}" in log and f"--side {side['path']}" in log and "--three-quarter" not in log
     [generation] = client.get(f"/api/actors/{actor['id']}").json()["generations"]
     assert generation["record"]["model"] == "pixal3d"
+
+
+def test_face_model_takes_turned_views_when_there_are_some(client):
+    _, actor, front = make_actor(client)
+    url = f"/api/actors/{actor['id']}/generations"
+    assert client.post(url, json={"reference_id": front["id"], "model": "gnm", "texture": True}).status_code == 422
+    job = client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()   # front only is fine
+    assert job["settings"] == {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
+                               "three_quarter_id": None, "model": "gnm"}
+    job = wait_for(client, job["id"])
+    assert job["status"] == "done", job["error"]
+    assert job["run_dir"].endswith("-facemodel-geometry")
+    log = client.get(f"/api/jobs/{job['id']}/log").text
+    assert "--engine-python" in log and "--side" not in log
+
+    three_quarter = client.post(f"/api/actors/{actor['id']}/references",
+                                files={"file": ("Nia 45.png", png(), "image/png")}, data={"view": "three_quarter"}).json()
+    job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()["id"])
+    assert job["status"] == "done", job["error"]
+    assert f"--three-quarter {three_quarter['path']}" in client.get(f"/api/jobs/{job['id']}/log").text
+    assert {g["record"]["model"] for g in client.get(f"/api/actors/{actor['id']}").json()["generations"]} == {"gnm"}
+
+
+def test_face_model_progress_runs_through_both_parts():
+    from tamo_server.engine import GnmEngine, Progress
+    engine, progress, seen = GnmEngine(None), Progress("Starting", 0.0), []
+    lines = ["Building the rough head with TRELLIS.2...", "Removing background with BiRefNet...",
+             "Cropped to head and neck.", "GPU memory in use before generation: 1007 MiB"]
+    for bar in ("Sampling sparse structure", "Sampling shape SLat", "Sampling shape SLat"):
+        lines += [f"{bar}: {n}%|##| {n}/100" for n in (0, 50, 100, 100)]
+    lines += ["generated {'mesh': 1}", "exported /x/model.glb", "Result:       ok",
+              "Removing background from the turned views...", "Fitting the face model to the photos...",
+              "[rigid] lm_front 30.00", "[identity] lm_front 12.00", "[v1] sil_front 2.00"]
+    lines += [f"[dense reg {r}] dense_front 2.40" for r in ("5.0", "2.0", "1.0", "0.5", "0.25")]
+    lines += ["Adding the face shape from the TRELLIS.2 head...", "Exporting the MetaHuman-aligned head with Blender...",
+              "Face model run finished.", "Result:       ok"]
+    for line in lines:
+        moved = engine.progress(line, progress)
+        if moved:
+            progress = moved
+            seen.append((progress.stage, progress.fraction))
+    fractions = [f for _, f in seen]
+    assert fractions == sorted(fractions)
+    assert ("Generating: shape detail", 0.34) in seen
+    assert ("Fitting the face model: face detail", 0.86) in seen
+    assert seen[-1] == ("Finishing", 0.99)
 
 
 def test_turned_view_in_use_cant_be_deleted(client, monkeypatch):

@@ -166,6 +166,7 @@ export default function App() {
           onChanged={refreshActor}
           onError={report}
           multiviewFound={health?.multiview_found ?? false}
+          facemodelFound={health?.facemodel_found ?? false}
         />
       </div>
     </div>

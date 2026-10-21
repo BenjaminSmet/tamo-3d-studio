@@ -140,7 +140,16 @@ export function HeadViewer({ url, shading, turn = false }: Props) {
         if (turnRef.current) gltf.scene.rotation.y = Math.PI;
         const loaded: Loaded = { model: gltf.scene, textured: new Map() };
         gltf.scene.traverse((child) => {
-          if (child instanceof THREE.Mesh) loaded.textured.set(child, child.material);
+          if (!(child instanceof THREE.Mesh)) return;
+          if (!child.geometry.attributes.normal) {
+            // Without normals the loader shades every triangle flat, which looks faceted; smooth them.
+            child.geometry.computeVertexNormals();
+            for (const m of [child.material].flat()) {
+              m.flatShading = false;
+              m.needsUpdate = true;
+            }
+          }
+          loaded.textured.set(child, child.material);
         });
         if (!sceneRef.current) return dispose(loaded);
         if (cancelled) {

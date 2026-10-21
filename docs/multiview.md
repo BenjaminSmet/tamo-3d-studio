@@ -26,7 +26,9 @@ otherwise starts one compile per CPU thread and runs out of memory. The build ta
 
 Take the side and three-quarter photos alongside the front shape photo
 ([shape-reference.md](shape-reference.md)): same identity, light and expression, camera at eye
-level, head to collarbone, plain background. The side photo is a true profile (camera at 90
+level, head to collarbone, plain background, and the whole head in frame with some space
+around it: a photo edge that cuts off the back of the skull makes Pixal3D squeeze the head
+into a tall cone, so the script stops with a message instead. The side photo is a true profile (camera at 90
 degrees), the three-quarter one at about 45 degrees. Either side works; the script reads which
 way the face points.
 

@@ -35,7 +35,13 @@ export type Reference = {
   created: string;
 };
 
-export type Model = "trellis2" | "pixal3d";
+export type Model = "trellis2" | "pixal3d" | "gnm";
+
+export const MODEL_NAMES: Record<Model, string> = {
+  trellis2: "Front only (TRELLIS.2)",
+  pixal3d: "Multi-view (Pixal3D)",
+  gnm: "Face model (GNM)",
+};
 
 export type Settings = { texture: boolean; pipeline: string; seed: number; smooth: number; crop: boolean };
 
@@ -103,6 +109,7 @@ export type Health = {
   engine: string;
   engine_found: boolean;
   multiview_found?: boolean;
+  facemodel_found?: boolean;
   library: string;
   library_windows_path: string | null;
   trash_windows_path: string | null;
