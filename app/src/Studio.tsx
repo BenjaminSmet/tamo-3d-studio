@@ -172,7 +172,7 @@ export function Studio({ actor, jobs, selection, onSelect, onChanged, onDeleted,
             <div className={g.record.result === "ok" ? "text-neutral-500" : "text-red-400"}>
               {g.record.result === "ok"
                 ? g.record.model === "gnm"
-                  ? "face model"
+                  ? `face model${g.record.mode === "textured" ? " · skin" : ""}`
                   : `${g.record.model === "pixal3d" ? "multi-view · " : ""}${g.record.pipeline ?? ""} · ${g.record.mode ?? ""}`
                 : "failed"}
             </div>

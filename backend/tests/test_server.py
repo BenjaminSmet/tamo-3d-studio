@@ -108,21 +108,41 @@ def test_multiview_uses_the_actors_turned_views(client, library):
 def test_face_model_takes_turned_views_when_there_are_some(client):
     _, actor, front = make_actor(client)
     url = f"/api/actors/{actor['id']}/generations"
-    assert client.post(url, json={"reference_id": front["id"], "model": "gnm", "texture": True}).status_code == 422
     job = client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()   # front only is fine
-    assert job["settings"] == {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
-                               "three_quarter_id": None, "model": "gnm"}
+    assert job["settings"] == {"texture": True, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
+                               "three_quarter_id": None, "other_side_id": None, "back_id": None, "model": "gnm"}
     job = wait_for(client, job["id"])
     assert job["status"] == "done", job["error"]
-    assert job["run_dir"].endswith("-facemodel-geometry")
+    assert job["run_dir"].endswith("-facemodel-textured")
     log = client.get(f"/api/jobs/{job['id']}/log").text
-    assert "--engine-python" in log and "--side" not in log
+    assert "--engine-python" in log and "--side" not in log and "--no-texture" not in log
+    [generation] = client.get(f"/api/actors/{actor['id']}").json()["generations"]
+    assert "albedo.png" in generation["files"]
+    albedo = client.get(f"/api/generations/{generation['id']}/files/albedo.png")
+    assert albedo.status_code == 200 and "albedo.png" in albedo.headers["content-disposition"]
+
+    job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm", "texture": False}).json()["id"])
+    assert job["status"] == "done", job["error"]
+    assert job["run_dir"].endswith("-facemodel-geometry")
+    assert "--no-texture" in client.get(f"/api/jobs/{job['id']}/log").text
 
     three_quarter = client.post(f"/api/actors/{actor['id']}/references",
                                 files={"file": ("Nia 45.png", png(), "image/png")}, data={"view": "three_quarter"}).json()
     job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()["id"])
     assert job["status"] == "done", job["error"]
     assert f"--three-quarter {three_quarter['path']}" in client.get(f"/api/jobs/{job['id']}/log").text
+
+    other_side = client.post(f"/api/actors/{actor['id']}/references",
+                             files={"file": ("Nia right.png", png(), "image/png")}, data={"view": "other_side"}).json()
+    back = client.post(f"/api/actors/{actor['id']}/references",
+                       files={"file": ("Nia back.png", png(), "image/png")}, data={"view": "back"}).json()
+    job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()["id"])
+    assert job["status"] == "done", job["error"]
+    assert job["settings"]["other_side_id"] == other_side["id"] and job["settings"]["back_id"] == back["id"]
+    log = client.get(f"/api/jobs/{job['id']}/log").text
+    assert f"--other-side {other_side['path']}" in log and f"--back {back['path']}" in log
+    pixal3d = client.post(url, json={"reference_id": front["id"], "model": "pixal3d", "back_id": back["id"]})
+    assert pixal3d.status_code == 422 and "other-side and back" in pixal3d.json()["detail"]
     assert {g["record"]["model"] for g in client.get(f"/api/actors/{actor['id']}").json()["generations"]} == {"gnm"}
 
 

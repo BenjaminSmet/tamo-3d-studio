@@ -18,6 +18,8 @@ parser.add_argument("--image")
 parser.add_argument("--front")
 parser.add_argument("--side")
 parser.add_argument("--three-quarter")
+parser.add_argument("--other-side")
+parser.add_argument("--back")
 parser.add_argument("--actor")
 parser.add_argument("--project")
 parser.add_argument("--library")
@@ -28,6 +30,7 @@ parser.add_argument("--pipeline")
 parser.add_argument("--seed")
 parser.add_argument("--smooth", default="0")
 parser.add_argument("--texture", action="store_true")
+parser.add_argument("--no-texture", action="store_true")
 parser.add_argument("--no-crop", action="store_true")
 args = parser.parse_args()
 
@@ -50,10 +53,13 @@ glb = os.environ.get("FAKE_GLB")
 (args.run_dir / "model.glb").write_bytes(Path(glb).read_bytes() if glb else b"glTF")
 print("Exporting the MetaHuman-aligned head with Blender...", flush=True)
 (args.run_dir / "head_metahuman.fbx").write_bytes(b"FBX")
+facemodel_texture = args.engine_python and not args.no_texture
+if facemodel_texture:
+    (args.run_dir / "albedo.png").write_bytes(b"PNG")
 record = {"model": "gnm" if args.engine_python else "pixal3d", "source_images": {"front": args.front, "side": args.side,
                                                  "three_quarter": args.three_quarter}} if args.front else {}
 (args.run_dir / "run.json").write_text(json.dumps({
-    **record, "source_image": args.image or args.front, "mode": "textured" if args.texture else "geometry",
+    **record, "source_image": args.image or args.front, "mode": "textured" if args.texture or facemodel_texture else "geometry",
     "pipeline": args.pipeline, "seed": int(args.seed), "smooth": float(args.smooth),
     "started": "2026-10-18T21:00:00", "seconds": 1, "result": "ok",
 }))
