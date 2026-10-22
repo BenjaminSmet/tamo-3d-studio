@@ -30,35 +30,49 @@ weights into `~/.cache/gnm/models`. Restart the app, then pick **Face model
 
 1. A front-only TRELLIS.2 head without a texture (`trellis/` in the run folder), about 2
    minutes on the GPU (about 4 GB).
-2. The side and three-quarter photos are cut out; one that faces right is mirrored, since GNM
-   is symmetric.
+2. The other photos (three-quarter, side, other side, back) are cut out. One that faces right is
+   mirrored for the fit, since GNM is symmetric; its camera is turned back afterwards, so the skin
+   texture always uses the photo as taken.
 3. GNM is fitted to the photos (`fit_gnm_v2.py`, about 2.5 minutes on the CPU). Each photo gets
    its own camera. MediaPipe's face points on the front and three-quarter photos place the eyes,
    nose and lips, and the outline of the head in every photo shapes the skull, above the chin
    only and never where the photo cuts the head off. The lips are matched by their edges (the
    outer lip line to GNM's lip border, the inner one to its mouth seam), so they keep their
-   fullness. The fit starts close to the average head and loosens in stages.
+   fullness. In a profile the line under the jaw, from the chin back to the neck, is followed
+   too (yellow in the overlay), so the under-chin doesn't hang below the photo's. A back photo
+   adds its outline at half weight. The fit starts close to the average head and loosens in
+   stages.
    `fit/overlay_<view>.png` shows the fit on each photo: cyan is the head's outline, red the
    photo's face points, green the model's.
 4. The hybrid (`hybrid.py`) moves GNM's face toward the TRELLIS.2 head's surface along its
    normals, by at most 1 cm, smoothed and faded out at the forehead, ears, temples and jaw.
    It never touches the mouth seam or the eyes, and it only makes the lips fuller.
-5. `model.glb`, `model.obj` and `head_metahuman.fbx`, exported without smoothing.
+5. With **Skin texture** on (off by default in the app; the command line bakes it unless given
+   `--no-texture`; about 1.5 minutes more and 7 GB of memory), the
+   skin is baked from the photos (`texture.py`): projected through the fitted cameras, shine and
+   the photos' lighting taken out, the views colour-matched and blended. `albedo.png` (4K) is
+   written, and `head_metahuman.fbx` carries it.
+6. `model.glb`, `model.obj` and `head_metahuman.fbx`, exported without smoothing.
 
-Side and three-quarter photos are optional, but without them the depth of the skull comes
-from GNM's average head. They work best from the same shoot as the front, the whole head in
-frame, bald or with the hair tied back.
+Side, three-quarter, other-side and back photos are optional, but without them the depth of the
+skull comes from GNM's average head, and the skin texture guesses whatever no photo shows (the
+far cheek, the back of the head). They work best from the same shoot as the front, in the same
+soft, even light, large (2000 px or more across the face), the whole head in frame, bald or with
+the hair tied back.
 
 From the command line:
 
 ```bash
 ~/tamo-gnm/.venv/bin/python ai-engine/phase5/run_facemodel.py --actor nia_okafor \
-    --front front.png --side side.png --three-quarter three_quarter.png
+    --front front.png --side side.png --three-quarter three_quarter.png [--other-side o.png] [--back b.png] \
+    [--no-texture]
 ```
 
 ## In MetaHuman
 
-Import `head_metahuman.fbx` with default settings and use From Custom Mesh, as before. The
+Import `head_metahuman.fbx` with default settings and use From Custom Mesh, as before. MetaHuman
+takes only the shape from it: `albedo.png` is laid out on our head's UVs, not MetaHuman's, so it
+can't go into MetaHuman's texture overrides as it is. The
 eyes stay close to GNM's average shape on purpose, since the eye area is where image models add
 lash ridges: tune the eyes in MetaHuman with its eye curves.
 

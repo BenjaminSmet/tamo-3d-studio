@@ -6,20 +6,27 @@ through. GNM (Apache 2.0) is a head model learned from 3D scans: it can only mak
 heads, with a smooth skull, eyes and lips with depth over a proper mouth seam.
 
 One run:
-1. A front-only TRELLIS.2 head (Phase 1, in trellis/), for the hybrid in step 4.
-2. Cut-outs of the side and three-quarter photos; turned views are mirrored to face left.
+1. A front-only TRELLIS.2 head (Phase 1, in trellis/, shape only), for the hybrid in step 4.
+2. Cut-outs of the other photos (three-quarter, side, other side, back). GNM is symmetric, so
+   the fit takes every turned view facing left: one that faces right is mirrored for the fit, and
+   its fitted camera is reflected back across the head's symmetry plane afterwards, so the
+   texture always projects the photo as taken (a mole stays on its own cheek).
 3. GNM fitted to the photos (fit_gnm_v2.py): MediaPipe face points on the front and
-   three-quarter photos, the head's outline in every photo.
+   three-quarter photos, the head's outline in every photo (the back's at half weight).
 4. The hybrid (hybrid.py): GNM's skull and topology plus the TRELLIS.2 head's face shape,
    clamped to 1 cm and kept off the mouth seam and the eyes.
-5. model.glb, model.obj and head_metahuman.fbx (no smoothing: GNM's surface is already clean).
+5. The skin texture (texture.py): albedo.png, 4K, baked from the photos.
+6. model.glb (textured), model.obj (shape only) and head_metahuman.fbx with the albedo embedded
+   (no smoothing: GNM's surface is already clean). If the texture fails, the untextured head is
+   exported as before and run.json says "texture": "failed". --no-texture skips step 5, as before
+   texturing existed.
 
 Same run folder and run.json as Phase 1, so the app shows it as a version. Runs with the
 face model's own Python (see docs/facemodel.md); TRELLIS.2 and the cut-outs run in
 Espalier-2's, given with --engine-python:
 
     ~/tamo-gnm/.venv/bin/python ai-engine/phase5/run_facemodel.py --actor nia_okafor \\
-        --front front.png --side side.png --three-quarter three_quarter.png
+        --front front.png --side side.png --three-quarter three_quarter.png [--other-side o.png] [--back b.png]
 """
 
 import argparse
@@ -51,11 +58,28 @@ def cut_out(engine_python: Path, image: Path, out: Path, log: Path) -> Image.Ima
     return Image.open(out).convert("RGBA")
 
 
+def unmirror_cameras(cameras_json: Path, originals: dict[str, Path]) -> None:
+    """Cameras fitted to mirrored photos, reflected across the head's symmetry plane (x = 0) and given the photo
+    as taken: with D = diag(-1, 1, 1), x_cam = D R D X + D t puts a point X at w - u, where the fitted camera
+    put its mirror image D X at u."""
+    cams = json.loads(cameras_json.read_text())
+    D = [-1.0, 1.0, 1.0]
+    for name, original in originals.items():
+        if name in cams:
+            c = cams[name]
+            c["R"] = [[D[i] * c["R"][i][j] * D[j] for j in range(3)] for i in range(3)]
+            c["t"] = [D[i] * c["t"][i] for i in range(3)]
+            c["image"], c["mirrored_for_fit"] = str(original), True
+    cameras_json.write_text(json.dumps(cams, indent=1))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Phase 5: photos to a clean GNM head for MetaHuman.")
     parser.add_argument("--front", required=True, type=Path)
     parser.add_argument("--side", type=Path)
     parser.add_argument("--three-quarter", type=Path)
+    parser.add_argument("--other-side", type=Path, help="the other profile")
+    parser.add_argument("--back", type=Path, help="the back of the head")
     parser.add_argument("--actor", required=True)
     parser.add_argument("--project", default="tamo")
     parser.add_argument("--library", type=Path, default=REPO_ROOT / "library" / "projects")
@@ -64,11 +88,13 @@ def main() -> None:
                         help="Espalier-2's Python, for TRELLIS.2 and the background removal")
     parser.add_argument("--pipeline", default="1024_cascade", choices=["512", "1024", "1024_cascade", "1536_cascade"])
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no-texture", action="store_true", help="shape only: no skin texture")
     parser.add_argument("--no-metahuman", action="store_true")
     parser.add_argument("--run-dir", type=Path)
     args = parser.parse_args()
 
-    inputs = [("front", args.front), ("three_quarter", args.three_quarter), ("side", args.side)]
+    inputs = [("front", args.front), ("three_quarter", args.three_quarter), ("side", args.side),
+              ("other_side", args.other_side), ("back", args.back)]
     inputs = [(name, path.resolve()) for name, path in inputs if path]
     for _, path in inputs:
         if not path.is_file():
@@ -76,14 +102,16 @@ def main() -> None:
     if not args.engine_python.is_file():
         sys.exit(f"Espalier-2's Python not found at {args.engine_python}. See docs/phase1-install.md.")
 
+    texture = not args.no_texture
+    mode = "textured" if texture else "geometry"
     actor_dir = args.library / args.project / "actors" / args.actor
-    run_dir = args.run_dir or actor_dir / "generations" / f"{datetime.now():%Y%m%d-%H%M%S}-facemodel-geometry"
+    run_dir = args.run_dir or actor_dir / "generations" / f"{datetime.now():%Y%m%d-%H%M%S}-facemodel-{mode}"
     run_dir.mkdir(parents=True)
     log = run_dir / "espalier.log"
     record = {
         "model": "gnm",
         "source_images": {name: str(path) for name, path in inputs},
-        "mode": "geometry",
+        "mode": mode,
         "pipeline": args.pipeline,
         "seed": args.seed,
         "smooth": 0.0,
@@ -122,12 +150,16 @@ def main() -> None:
     views = run_dir / "views"
     views.mkdir()
     shutil.copy2(trellis / "input_cutout.png", views / "front.png")
+    mirrored = {}
     for name, path in inputs[1:]:
-        rgba = cut_out(args.engine_python, path, run_dir / f"cutout_{name}.png", log)
-        direction = facing(head_box(rgba))
-        if direction == "right":
-            rgba = ImageOps.mirror(rgba)   # the fit expects turned faces pointing left
-        print(f"{name.replace('_', '-').capitalize()} view faces {direction}.")
+        original = run_dir / f"cutout_{name}.png"
+        rgba = cut_out(args.engine_python, path, original, log)
+        if name != "back":                  # the back has no face to point anywhere
+            direction = facing(head_box(rgba))
+            if direction == "right":
+                rgba = ImageOps.mirror(rgba)   # the fit takes turned faces pointing left
+                mirrored[name] = original
+            print(f"{name.replace('_', '-').capitalize()} view faces {direction}.")
         rgba.save(views / f"{name}.png")
 
     print("Fitting the face model to the photos...", flush=True)
@@ -138,6 +170,7 @@ def main() -> None:
     if run_logged(cmd, log) != 0:
         finish("failed")
     record["fit"] = json.loads((fit / "fit.json").read_text())["final"]
+    unmirror_cameras(fit / "cameras.json", mirrored)
 
     print("Adding the face shape from the TRELLIS.2 head...", flush=True)
     hybrid = run_dir / "hybrid"
@@ -153,7 +186,16 @@ def main() -> None:
 
     glb = run_dir / "model.glb"
     shutil.copy2(hybrid / "gnm_head.glb", glb)
-    glb_to_obj(glb, run_dir / "model.obj")
+    glb_to_obj(glb, run_dir / "model.obj")                    # shape only, also when textured
+    if texture:
+        if run_logged([sys.executable, "-u", str(HERE / "texture.py"), "--run", str(run_dir)], log) == 0 \
+                and (run_dir / "model_textured.glb").is_file():
+            (run_dir / "model_textured.glb").replace(glb)    # the app's viewer shows the skin
+            record["texture"] = "ok"
+            record["albedo"] = str(run_dir / "albedo.png")
+        else:
+            print(f"The skin texture failed; exporting the head without it. See {log}")
+            record["texture"] = "failed"
     if not args.no_metahuman:
         print("Exporting the MetaHuman-aligned head with Blender...", flush=True)
         fbx = run_dir / "head_metahuman.fbx"

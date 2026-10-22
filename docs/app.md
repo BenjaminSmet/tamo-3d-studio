@@ -65,8 +65,9 @@ Your existing runs under `library/projects/` show up automatically as versions.
    back of the skull gives a squeezed, tall head, so the run stops with a message instead.
    Multi-view needs Pixal3D installed ([multiview.md](multiview.md)).
    **Face model (GNM)** fits Google's head model to the front photo and, when there are
-   some, the Side and Three-quarter images: a smooth skull and real lips, so MetaHuman's solve
-   has no bumps and no teeth poking through. It takes about 5.5 minutes and builds shape only.
+   some, the Side, Three-quarter, Other side and Back images: a smooth skull and real lips, so
+   MetaHuman's solve has no bumps and no teeth poking through. It takes about 5.5 minutes.
+   Tick **Skin texture** to also bake `albedo.png` from the photos (about 1.5 minutes more).
    It needs the face model installed ([facemodel.md](facemodel.md)).
    Press **Generate head**. Progress shows in the viewer and in the queue on the left.
 4. Turn the head in the viewer (textured or clay), and download **MetaHuman head (FBX)**.

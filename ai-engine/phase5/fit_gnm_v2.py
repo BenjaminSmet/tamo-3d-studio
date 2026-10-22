@@ -7,10 +7,15 @@ to the silhouette. The identity prior is then loosened stage by stage, stopping 
 silhouette error or the head's asymmetry grows, with more lower-face expression components
 freed under regularisation.
 
-    python fit_gnm_v2.py --front F.png --three-quarter T.png --side S.png --out fit/
+    python fit_gnm_v2.py --front F.png --three-quarter T.png --side S.png [--other-side O.png] [--back B.png] --out fit/
 
-Writes fit.npz (all GNM vertices), keep_indices.npy (skin and eyeballs), gnm_head.glb, fit.json
-and overlay_<view>.png into --out. Turned views must face the left of the image.
+The other side is a second profile, handed in facing left like the side (GNM is symmetric). The back has no
+face points: its camera starts at 180 degrees and is fitted from the head's outline down to the neck, at half
+the silhouette weight, so a poor back cut-out can't pull the skull much.
+
+Writes fit.npz (all GNM vertices), keep_indices.npy (skin and eyeballs), gnm_head.glb, fit.json,
+cameras.json (the fitted camera per photo, for texture.py) and overlay_<view>.png into --out.
+Turned views must face the left of the image.
 """
 
 import argparse
@@ -48,6 +53,34 @@ def region_sets():
     return {"oval": pts(c.FACEMESH_FACE_OVAL), "lips": pts(c.FACEMESH_LIPS), "nose": pts(c.FACEMESH_NOSE)}
 
 
+def jaw_outline(v) -> np.ndarray | None:
+    """The photo's under-jaw line in a profile (face to the left): the cut-out's outline from the chin tip back
+    along the underside of the jaw, stopping where it turns down into the neck (GNM's neck and the photo's don't
+    match, so the neck is left out). Pixels (x, y), or None when there's no usable chin. Profiles only: in a
+    three-quarter view the line is short and half hidden, and fitting it made the face points worse."""
+    if v.kind != "side" or not v.anchors:
+        return None
+    chin = np.array(v.anchors[8])
+    contours, _ = cv2.findContours(v.alpha.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    c = max(contours, key=len)[:, 0].astype(float)
+    n = len(c)
+    i0 = int(np.argmin(np.linalg.norm(c - chin, axis=1)))
+    head_h = v.box["chin"] - v.box["top"]
+    best = None
+    for step in (1, -1):                     # the walk that heads back (to larger x) is the jaw
+        pts = []
+        for k in range(1, n // 3):
+            p, ahead = c[(i0 + step * k) % n], c[(i0 + step * (k + 8)) % n]
+            dx, dy = ahead[0] - p[0], ahead[1] - p[1]
+            if p[0] - chin[0] > 0.6 * head_h or dx <= 0 or (len(pts) > 5 and dy > 1.7 * dx):
+                break                        # too far back, turning forward, or going down the neck
+            if 1 < p[0] < v.w - 2 and 1 < p[1] < v.h - 2:
+                pts.append(p)
+        if pts and (best is None or pts[-1][0] > best[-1][0]):
+            best = pts
+    return np.array(best) if best is not None and len(best) >= 8 else None
+
+
 def barycentric_correspondence(uv, V, tris, normals, view_dir, points):
     """For each 2D point, a front-facing triangle under it and barycentric coordinates (or -1)."""
     t2 = uv[tris]                                                   # T,3,2
@@ -76,8 +109,12 @@ def main():
     ap.add_argument("--front", required=True, type=Path)
     ap.add_argument("--three-quarter", type=Path)
     ap.add_argument("--side", type=Path)
+    ap.add_argument("--other-side", type=Path, help="the other profile, handed in facing left like --side")
+    ap.add_argument("--back", type=Path, help="the back of the head; fitted from its outline only")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--expr", type=int, default=60)
+    ap.add_argument("--jaw-weight", type=float, default=0.5,
+                    help="weight of the under-jaw outline in profiles, relative to the silhouette (0 = off)")
     args = ap.parse_args()
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -98,12 +135,22 @@ def main():
     regions = region_sets()
 
     views = [F.View("front", args.front, mp_model)]
-    if args.three_quarter:
-        views.append(F.View("three_quarter", args.three_quarter, mp_model))
-    if args.side:
-        views.append(F.View("side", args.side, mp_model))
+    paths = {"front": args.front}
+    for name, kind, path in (("three_quarter", "three_quarter", args.three_quarter), ("side", "side", args.side),
+                             ("other_side", "side", args.other_side), ("back", "back", args.back)):
+        if not path:
+            continue
+        try:
+            views.append(F.View(name, path, mp_model, kind))
+            paths[name] = path
+        except ValueError as e:                     # e.g. no neck found in a back photo: fit without it
+            print(f"Leaving out the {name.replace('_', ' ')} photo: {e}")
     for v in views:
-        v.dense = mediapipe_dense(v.rgb, mp_model) if v.name != "side" else None
+        v.dense = mediapipe_dense(v.rgb, mp_model) if v.kind in ("front", "three_quarter") else None
+        v.jaw = jaw_outline(v)
+        if v.jaw is not None:
+            v.jaw_t = torch.tensor(v.jaw)
+            print(f"{v.name}: under-jaw line of {len(v.jaw)} px, x {v.jaw[0, 0]:.0f}..{v.jaw[-1, 0]:.0f}")
 
     ident = torch.zeros(len(head_ids), requires_grad=True)
     expr = torch.zeros(len(expr_ids), requires_grad=True)
@@ -172,8 +219,26 @@ def main():
                     v.sil_idx = v.sil_idx[uv.detach().numpy()[v.sil_idx][:, 1] < min(chin_v, v.box["chin"])]
                 if len(v.sil_idx) > 10:
                     c = F.chamfer(uv[v.sil_idx], v.outline)
-                    total = total + F.SIL_W * c ** 2
+                    total = total + F.SIL_W * v.sil_w * c ** 2
                     parts[f"sil_{v.name}"] = float(c.detach())
+                # under the jaw (profiles): the model's outline vertices in the window of the photo's
+                # under-jaw line, against that line; the window stops short of the neck
+                if v.jaw is not None:
+                    if it % 5 == 0 or not hasattr(v, "jaw_idx"):
+                        uvn = uv.detach().numpy()
+                        sv = F.silhouette_vertices(uvn, skin_tris, v.w, v.h, skin_idx)
+                        p = uvn[sv]
+                        hh = v.box["chin"] - v.box["top"]
+                        # in 3D, only the underside of the jaw: at most 2.5 cm below the chin point, never the throat
+                        jaw3d = V.detach().numpy()[sv, 1] >= float(L[8, 1]) - 0.025
+                        keep = ((p[:, 0] >= v.jaw[:, 0].min() - 2) & (p[:, 0] <= v.jaw[:, 0].max() + 2)
+                                & (p[:, 1] > v.jaw[:, 1].min() - 0.05 * hh) & (p[:, 1] < v.jaw[:, 1].max() + 0.08 * hh)
+                                & jaw3d)
+                        v.jaw_idx = sv[keep]
+                    if len(v.jaw_idx) > 5:
+                        cj = F.chamfer(uv[v.jaw_idx], v.jaw_t)
+                        total = total + F.SIL_W * args.jaw_weight * cj ** 2
+                        parts[f"jaw_{v.name}"] = float(cj.detach())
         return total, parts
 
     def asym(_posed=None):
@@ -285,6 +350,11 @@ def main():
               "expression_rms": float(expr.pow(2).mean().sqrt())}
     (out / "fit.json").write_text(json.dumps(report, indent=1))
     np.savez(out / "fit.npz", vertices=V, identity=ident.detach().numpy(), expression=expr.detach().numpy())
+    # fitted pinhole cameras, for projecting the photos onto the head: x_cam = R X + t, u = f x/z + w/2
+    with torch.no_grad():
+        cameras = {v.name: {"R": v.R().tolist(), "t": v.t.tolist(), "f": math.exp(float(v.logf)), "w": v.w, "h": v.h,
+                            "image": str(paths[v.name].resolve())} for v in views}
+    (out / "cameras.json").write_text(json.dumps(cameras, indent=1))
     print("REPORT", json.dumps({k: report[k] for k in ("seconds", "final", "identity_rms", "identity_abs_max", "expression_rms")}))
 
     # overlays (dense points: red = MediaPipe, green = model)
@@ -300,6 +370,8 @@ def main():
         cs, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         for cnt in cs:
             d.line([tuple(p[0]) for p in cnt] + [tuple(cnt[0][0])], fill=(0, 255, 255), width=2)
+        if v.jaw is not None:                                   # the photo's under-jaw line the fit followed
+            d.line([tuple(p) for p in v.jaw], fill=(255, 210, 0), width=2)
         if v.dense is not None:
             tri = tris_all[dense["tri"][ok]]
             P = (V[tri] * dense["w"][ok][:, :, None]).sum(1)
