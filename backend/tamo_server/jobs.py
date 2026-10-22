@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from .db import Database, now
-from .engine import TURNED_VIEWS, Progress
+from .engine import Progress
 from .library import move_to_trash, new_run_dir
 
 LOG_TAIL_LINES = 40
@@ -103,7 +103,7 @@ class JobQueue:
             (job["reference_id"], job["actor_id"]))
         engine = self.engines[settings.get("model", "trellis2")]
         images = {"front": Path(info["image"])} if info else {}
-        for view in TURNED_VIEWS:
+        for view in engine.views:
             reference_id = settings.get(f"{view}_id")
             if reference_id is not None:
                 row = self.db.one("SELECT path FROM reference_images WHERE id = ?", (reference_id,))

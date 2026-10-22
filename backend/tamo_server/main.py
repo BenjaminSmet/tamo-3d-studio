@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .config import Settings
 from .db import Database, generation_view, job_view, now
-from .engine import TURNED_VIEWS, GnmEngine, Pixal3DEngine, Trellis2Engine
+from .engine import EXTRA_VIEWS, TURNED_VIEWS, GnmEngine, Pixal3DEngine, Trellis2Engine
 from . import updates
 from .jobs import JobQueue
 from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_project, move_to_trash,
@@ -25,7 +25,7 @@ from .library import (VIEWS, InvalidImage, actor_dir, ensure_actor, ensure_proje
 
 # Files of a run the interface may fetch, and nothing else from the disk.
 RUN_FILES = {
-    "model.glb", "model.obj", "head_metahuman.fbx", "input_rgba.png", "input_cutout.png",
+    "model.glb", "model.obj", "head_metahuman.fbx", "albedo.png", "input_rgba.png", "input_cutout.png",
     "run.json", "espalier.log", "vram.csv",
 }
 
@@ -48,6 +48,8 @@ class NewGeneration(BaseModel):
     model: str = "trellis2"            # "pixal3d": multi-view, with a side and/or three-quarter image; "gnm": face model
     side_id: int | None = None         # multi-view and face model; the actor's newest of each view when left out
     three_quarter_id: int | None = None
+    other_side_id: int | None = None   # face model only
+    back_id: int | None = None
     texture: bool | None = None
     pipeline: str | None = None
     seed: int | None = None
@@ -229,6 +231,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if engine is None:
             raise HTTPException(422, f"model must be one of {', '.join(engines)}")
         options = body.model_dump(exclude={"reference_id", "model"})
+        for view in EXTRA_VIEWS:
+            if view not in engine.views and options.pop(f"{view}_id") is not None:
+                raise HTTPException(422, "Only multi-view and the face model use side and three-quarter images."
+                                    if view in TURNED_VIEWS else "Only the face model uses other-side and back images.")
         if engine.views:
             for view in engine.views:
                 key = f"{view}_id"
@@ -241,10 +247,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise HTTPException(404, f"That {view.replace('_', '-')} image doesn't belong to this actor.")
             if engine.needs_turned_view and all(options[f"{view}_id"] is None for view in engine.views):
                 raise HTTPException(422, "Multi-view needs a side or three-quarter image of this actor.")
-        else:
-            for view in TURNED_VIEWS:
-                if options.pop(f"{view}_id") is not None:
-                    raise HTTPException(422, "Only multi-view and the face model use side and three-quarter images.")
         try:
             options = {**engine.validate(options), "model": engine.name}
         except ValueError as error:
@@ -296,7 +298,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = Path(found["run_dir"]) / name
         if not path.is_file():
             raise HTTPException(404, "That file wasn't produced by this run.")
-        return FileResponse(path, filename=name if name.endswith((".fbx", ".obj", ".glb")) else None)
+        return FileResponse(path, filename=name if name.endswith((".fbx", ".obj", ".glb")) or name == "albedo.png" else None)
 
     @app.post("/api/actors/{actor_id}/preferred")
     def set_preferred(actor_id: int, generation_id: int = Form(...)):
@@ -326,8 +328,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         found = db.one("SELECT * FROM reference_images WHERE id = ?", (reference_id,))
         if not found:
             raise HTTPException(404, "No such reference image.")
-        refuse_if_busy("(j.reference_id = ? OR json_extract(j.settings, '$.side_id') = ? "
-                       "OR json_extract(j.settings, '$.three_quarter_id') = ?)", (reference_id,) * 3, "This image")
+        refuse_if_busy("(j.reference_id = ? OR " + " OR ".join(f"json_extract(j.settings, '$.{view}_id') = ?"
+                                                               for view in EXTRA_VIEWS) + ")",
+                       (reference_id,) * (1 + len(EXTRA_VIEWS)), "This image")
         db.transaction([
             ("UPDATE generations SET job_id = NULL WHERE job_id IN (SELECT id FROM jobs WHERE reference_id = ?)",
              (reference_id,)),

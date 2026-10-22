@@ -43,7 +43,8 @@ LM_WEIGHT = np.ones(68)
 LM_WEIGHT[0:17] = 0.0          # jaw contour: the silhouette handles it
 LM_WEIGHT[17:27] = 0.5         # brows
 SIL_W = 2.0
-AZIMUTH = {"front": 0.0, "three_quarter": 45.0, "side": 90.0}
+AZIMUTH = {"front": 0.0, "three_quarter": 45.0, "side": 90.0, "back": 180.0}
+BACK_SIL = 0.5                 # the back's outline weighs half: hair, a collar or a bad cut-out mustn't pull the skull
 torch.set_default_dtype(torch.float64)
 
 
@@ -75,15 +76,25 @@ def axis_angle(v: torch.Tensor) -> torch.Tensor:
 
 
 class View:
-    def __init__(self, name: str, path: Path, mp_model: Path):
+    """One photo and its camera. kind is front, three_quarter, side or back (the camera's starting azimuth and
+    what the photo can show); name tells views of the same kind apart, e.g. side and other_side, both handed in
+    facing left. A back view has no face points: it is fitted from the head's outline above the neck only."""
+
+    def __init__(self, name: str, path: Path, mp_model: Path, kind: str | None = None):
         self.name = name
+        self.kind = kind = kind or name
         rgba = Image.open(path).convert("RGBA")
         self.rgba = rgba
         self.w, self.h = rgba.size
         a = np.asarray(rgba.getchannel("A")) >= frame_views.ALPHA_THRESHOLD
         self.alpha = a
-        box = frame_views.head_box(rgba, None if name == "front" else "left")
+        if kind == "back":
+            box = frame_views.head_box(rgba, "left")
+            box["chin"] = box["neck"]        # no chin to see: the outline down to the neck
+        else:
+            box = frame_views.head_box(rgba, None if kind == "front" else "left")
         self.box = box
+        self.sil_w = BACK_SIL if kind == "back" else 1.0
         # photo outline above the chin, without pixels on the image border
         edge = a & ~cv2.erode(a.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
         ys, xs = np.nonzero(edge)
@@ -94,11 +105,11 @@ class View:
         self.outline = torch.tensor(pts)
         rgb = np.asarray(Image.alpha_composite(Image.new("RGBA", rgba.size, (128, 128, 128, 255)), rgba).convert("RGB"))
         self.rgb = rgb
-        self.lm = mediapipe_68(rgb, mp_model) if name != "side" else None
+        self.lm = mediapipe_68(rgb, mp_model) if kind in ("front", "three_quarter") else None
         # In a profile MediaPipe is unreliable; anchor the nose tip and chin from the face's edge instead
         # (the face points to the image's left: the edge is the first filled column of each row).
         self.anchors = None
-        if name == "side":
+        if kind == "side":
             top, chin = box["top"], box["chin"]
             hgt = chin - top
             rows = np.arange(top + int(0.45 * hgt), top + int(0.80 * hgt))
@@ -108,7 +119,7 @@ class View:
             self.anchors = {30: (float(left_cols.min()), float(nose_r)), 8: (float(chin_cols[0]), float(chin - 2))}
         # camera unknowns: rotation delta, translation, log focal
         self.rot = torch.zeros(3, requires_grad=True)
-        self.R0 = torch.tensor(np.diag([1.0, -1.0, -1.0]) @ rot_y(-AZIMUTH[name]))
+        self.R0 = torch.tensor(np.diag([1.0, -1.0, -1.0]) @ rot_y(-AZIMUTH[kind]))
         f0 = (max(self.w, self.h) / 2) / math.tan(math.radians(20) / 2)
         self.logf = torch.tensor(math.log(f0), requires_grad=True)
         self.t = torch.tensor([0.0, 0.0, 1.0], requires_grad=True)

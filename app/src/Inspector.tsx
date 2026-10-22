@@ -27,6 +27,7 @@ type Props = {
 
 const FILE_LABELS: Record<string, string> = {
   "head_metahuman.fbx": "MetaHuman head (FBX)",
+  "albedo.png": "Skin texture (albedo PNG)",
   "model.glb": "Raw model (GLB)",
   "model.obj": "Raw model (OBJ)",
   "input_rgba.png": "What the model saw (front)",
@@ -97,12 +98,18 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
   const [referenceId, setReferenceId] = useState<number | null>(null);
   const [sideId, setSideId] = useState<number | null>(null);
   const [threeQuarterId, setThreeQuarterId] = useState<number | null>(null);
+  const [otherSideId, setOtherSideId] = useState<number | null>(null);
+  const [backId, setBackId] = useState<number | null>(null);
+  // The face model's skin texture is off unless asked for; the other methods share settings.texture.
+  const [skinTexture, setSkinTexture] = useState(false);
   const [model, setModel] = useState<Model>("trellis2");
   const [busy, setBusy] = useState(false);
   const fronts = actor.references.filter((r) => r.view === "front" || r.view === "unsorted");
   // Newest first, so the default is the latest photo of each view.
   const sides = actor.references.filter((r) => r.view === "side").reverse();
   const threeQuarters = actor.references.filter((r) => r.view === "three_quarter").reverse();
+  const otherSides = actor.references.filter((r) => r.view === "other_side").reverse();
+  const backs = actor.references.filter((r) => r.view === "back").reverse();
   const canMultiview = multiviewFound && sides.length + threeQuarters.length > 0;
   const multiview = model === "pixal3d";
   // The face model uses the turned views when there are some, and builds shape only.
@@ -113,10 +120,12 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
     setReferenceId(fronts[0]?.id ?? null);
     setSideId(sides[0]?.id ?? null);
     setThreeQuarterId(threeQuarters[0]?.id ?? null);
+    setOtherSideId(otherSides[0]?.id ?? null);
+    setBackId(backs[0]?.id ?? null);
     // Front only is the default: multi-view only does better with uncropped turned views from the same shoot.
     setModel("trellis2");
     // Reset when switching actors or when new images arrive.
-  }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, otherSides[0]?.id, backs[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (multiview && !settings.pipeline.endsWith("_cascade")) setSettings((s) => ({ ...s, pipeline: "1024_cascade" }));
@@ -165,7 +174,23 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
               />
             </>
           )}
-          {!facemodel && (
+          {facemodel && (
+            <>
+              <ImagePicker
+                label="Other side image"
+                value={otherSideId}
+                options={otherSides}
+                none="None"
+                onChange={setOtherSideId}
+              />
+              <ImagePicker label="Back image" value={backId} options={backs} none="None" onChange={setBackId} />
+            </>
+          )}
+          {facemodel ? (
+            <Field label="Skin texture">
+              <input type="checkbox" checked={skinTexture} onChange={(e) => setSkinTexture(e.target.checked)} />
+            </Field>
+          ) : (
             <Field label="Texture">
               <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
             </Field>
@@ -221,7 +246,15 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
                   actor.id,
                   referenceId!,
                   facemodel
-                    ? { model, seed: settings.seed, side_id: sideId, three_quarter_id: threeQuarterId }
+                    ? {
+                        model,
+                        texture: skinTexture,
+                        seed: settings.seed,
+                        side_id: sideId,
+                        three_quarter_id: threeQuarterId,
+                        other_side_id: otherSideId,
+                        back_id: backId,
+                      }
                     : multiview
                       ? { ...common, model, side_id: sideId, three_quarter_id: threeQuarterId }
                       : { ...common, crop, model },
@@ -242,9 +275,10 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
               " Multi-view takes about 5 minutes and 11 GB of GPU memory. Use views from the same shoot as the front," +
                 " each showing the whole head, back of the skull included."}
             {facemodel &&
-              " The face model takes about 5.5 minutes: a rough TRELLIS.2 head first, then Google's GNM head fitted to" +
-                " the photos. Side and three-quarter photos shape the skull. It builds shape only; MetaHuman makes" +
-                " the skin."}
+              " The face model takes about 5.5 minutes (7 with the skin texture): a rough TRELLIS.2 head first, then Google's GNM head fitted to" +
+                " the photos, then the skin texture baked from the photos. Side and three-quarter photos shape the" +
+                " skull and fill in the texture, and an other-side and a back photo fill in the rest; large photos from one" +
+                " evenly lit shoot give the cleanest skin."}
           </p>
         </>
       )}
