@@ -46,6 +46,8 @@ def main():
     ap.add_argument("--trellis", required=True, type=Path)
     ap.add_argument("--turn", type=float, default=0.0, help="degrees about Y to face +Z (Pixal3D GLBs need 180)")
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--lip-edge", type=float, default=1.5,
+                    help="mm the lip border (vermilion edge) stands out, so MetaHuman's tracking sees the lips (0 = off)")
     args = ap.parse_args()
     src, out = args.fit, args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -120,6 +122,26 @@ def main():
     d[lips] = np.maximum(d[lips], 0.0)                           # lips only ever get fuller
     offset = (weight * d)[:, None] * normals
     H = V + offset
+
+    # lip definition: GNM's lip border is a soft roll that MetaHuman's lip tracking barely sees. Raise the
+    # border ring (the "white roll"), sink the skin ring just outside it a little and keep the lips' body slightly
+    # forward, so the outline reads as a crisp edge. Never at the mouth seam.
+    edge = args.lip_edge / 1000
+    if edge > 0:
+        skin = skin_ext & ~lips & ~sock
+        border = np.zeros(n, bool)
+        border[i[lips[i] & skin[j]]] = True
+        border &= ~seam
+        outer = np.zeros(n, bool)
+        outer[j[border[i] & skin[j]]] = True
+        body = lips & ~border & ~seam
+        lift = np.zeros(n)
+        lift[border], lift[outer], lift[body] = 1.0, -0.4, 0.5
+        lift = smooth_scalar(lift, i, j, deg, 2)
+        lift[seam | sock | ~skin_ext] = 0.0
+        H = H + (edge * lift)[:, None] * trimesh.Trimesh(H, tris, process=False).vertex_normals
+        print(f"lip edge: {np.count_nonzero(border)} border vertices raised {args.lip_edge:.1f} mm")
+    offset = H - V
     moved = np.linalg.norm(offset, axis=1)
     print(f"offset: {np.count_nonzero(moved > 1e-4)} vertices moved, median {1000 * np.median(moved[moved > 1e-4]):.2f} mm, "
           f"max {1000 * moved.max():.2f} mm")
@@ -132,7 +154,7 @@ def main():
     remap[keep] = np.arange(len(keep))
     trimesh.Trimesh(H[keep], remap[ftris], process=False).export(out / "gnm_head.glb")
     json.dump({"scale": float(s), "icp_cost": float(cost), "moved_vertices": int(np.count_nonzero(moved > 1e-4)),
-               "median_mm": float(1000 * np.median(moved[moved > 1e-4])), "max_mm": float(1000 * moved.max())},
+               "median_mm": float(1000 * np.median(moved[moved > 1e-4])), "max_mm": float(1000 * moved.max()), "lip_edge_mm": args.lip_edge},
               open(out / "hybrid.json", "w"), indent=1)
     print(f"wrote {out / 'gnm_head.glb'}")
 
