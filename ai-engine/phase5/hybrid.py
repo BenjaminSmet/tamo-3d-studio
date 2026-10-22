@@ -46,7 +46,7 @@ def main():
     ap.add_argument("--trellis", required=True, type=Path)
     ap.add_argument("--turn", type=float, default=0.0, help="degrees about Y to face +Z (Pixal3D GLBs need 180)")
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--lip-edge", type=float, default=0.8,
+    ap.add_argument("--lip-edge", type=float, default=1.5,
                     help="mm the lip border (vermilion edge) stands out, so MetaHuman's tracking sees the lips (0 = off)")
     args = ap.parse_args()
     src, out = args.fit, args.out
