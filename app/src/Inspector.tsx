@@ -100,6 +100,8 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
   const [threeQuarterId, setThreeQuarterId] = useState<number | null>(null);
   const [otherSideId, setOtherSideId] = useState<number | null>(null);
   const [backId, setBackId] = useState<number | null>(null);
+  // The face model's skin texture is off unless asked for; the other methods share settings.texture.
+  const [skinTexture, setSkinTexture] = useState(false);
   const [model, setModel] = useState<Model>("trellis2");
   const [busy, setBusy] = useState(false);
   const fronts = actor.references.filter((r) => r.view === "front" || r.view === "unsorted");
@@ -184,9 +186,15 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
               <ImagePicker label="Back image" value={backId} options={backs} none="None" onChange={setBackId} />
             </>
           )}
-          <Field label={facemodel ? "Skin texture" : "Texture"}>
-            <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
-          </Field>
+          {facemodel ? (
+            <Field label="Skin texture">
+              <input type="checkbox" checked={skinTexture} onChange={(e) => setSkinTexture(e.target.checked)} />
+            </Field>
+          ) : (
+            <Field label="Texture">
+              <input type="checkbox" checked={settings.texture} onChange={(e) => set("texture", e.target.checked)} />
+            </Field>
+          )}
           {!turned && (
             <Field label="Crop to head and neck">
               <input type="checkbox" checked={settings.crop} onChange={(e) => set("crop", e.target.checked)} />
@@ -240,7 +248,7 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
                   facemodel
                     ? {
                         model,
-                        texture: settings.texture,
+                        texture: skinTexture,
                         seed: settings.seed,
                         side_id: sideId,
                         three_quarter_id: threeQuarterId,

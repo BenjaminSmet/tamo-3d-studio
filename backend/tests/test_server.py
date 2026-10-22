@@ -109,22 +109,21 @@ def test_face_model_takes_turned_views_when_there_are_some(client):
     _, actor, front = make_actor(client)
     url = f"/api/actors/{actor['id']}/generations"
     job = client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()   # front only is fine
-    assert job["settings"] == {"texture": True, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
+    assert job["settings"] == {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
                                "three_quarter_id": None, "other_side_id": None, "back_id": None, "model": "gnm"}
     job = wait_for(client, job["id"])
     assert job["status"] == "done", job["error"]
-    assert job["run_dir"].endswith("-facemodel-textured")
-    log = client.get(f"/api/jobs/{job['id']}/log").text
-    assert "--engine-python" in log and "--side" not in log and "--no-texture" not in log
-    [generation] = client.get(f"/api/actors/{actor['id']}").json()["generations"]
-    assert "albedo.png" in generation["files"]
-    albedo = client.get(f"/api/generations/{generation['id']}/files/albedo.png")
-    assert albedo.status_code == 200 and "albedo.png" in albedo.headers["content-disposition"]
-
-    job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm", "texture": False}).json()["id"])
-    assert job["status"] == "done", job["error"]
     assert job["run_dir"].endswith("-facemodel-geometry")
-    assert "--no-texture" in client.get(f"/api/jobs/{job['id']}/log").text
+    log = client.get(f"/api/jobs/{job['id']}/log").text
+    assert "--engine-python" in log and "--side" not in log and "--no-texture" in log
+
+    job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm", "texture": True}).json()["id"])
+    assert job["status"] == "done", job["error"]
+    assert job["run_dir"].endswith("-facemodel-textured")
+    assert "--no-texture" not in client.get(f"/api/jobs/{job['id']}/log").text
+    textured = [g for g in client.get(f"/api/actors/{actor['id']}").json()["generations"] if "albedo.png" in g["files"]]
+    albedo = client.get(f"/api/generations/{textured[0]['id']}/files/albedo.png")
+    assert albedo.status_code == 200 and "albedo.png" in albedo.headers["content-disposition"]
 
     three_quarter = client.post(f"/api/actors/{actor['id']}/references",
                                 files={"file": ("Nia 45.png", png(), "image/png")}, data={"view": "three_quarter"}).json()
@@ -157,7 +156,11 @@ def test_face_model_progress_runs_through_both_parts():
               "Removing background from the turned views...", "Fitting the face model to the photos...",
               "[rigid] lm_front 30.00", "[identity] lm_front 12.00", "[v1] sil_front 2.00"]
     lines += [f"[dense reg {r}] dense_front 2.40" for r in ("5.0", "2.0", "1.0", "0.5", "0.25")]
-    lines += ["Adding the face shape from the TRELLIS.2 head...", "Exporting the MetaHuman-aligned head with Blender...",
+    lines += ["Adding the face shape from the TRELLIS.2 head...", "Baking the skin texture...",
+              "Skin texture: ambient occlusion...", "Skin texture: projecting the photos...",
+              "Skin texture: taking out the lighting...", "Skin texture: filling in unseen skin...",
+              "Skin texture: blending...", "Skin texture: writing the textured head...",
+              "Skin texture done in 81 s: /x/albedo.png", "Exporting the MetaHuman-aligned head with Blender...",
               "Face model run finished.", "Result:       ok"]
     for line in lines:
         moved = engine.progress(line, progress)
@@ -168,6 +171,7 @@ def test_face_model_progress_runs_through_both_parts():
     assert fractions == sorted(fractions)
     assert ("Generating: shape detail", 0.34) in seen
     assert ("Fitting the face model: face detail", 0.86) in seen
+    assert ("Baking the skin texture: blending", 0.955) in seen
     assert seen[-1] == ("Finishing", 0.99)
 
 

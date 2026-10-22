@@ -211,7 +211,7 @@ class GnmEngine:
     run_name = "facemodel-"
     views = EXTRA_VIEWS
     needs_turned_view = False
-    defaults = {"texture": True, "pipeline": "1024_cascade", "seed": 42, "side_id": None, "three_quarter_id": None,
+    defaults = {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None, "three_quarter_id": None,
                 "other_side_id": None, "back_id": None}
 
     # Timed on an RTX 5070 Ti (about 5.5 minutes): TRELLIS.2 without a texture about 2 minutes,
@@ -236,6 +236,13 @@ class GnmEngine:
         ("[dense reg 0.5]", "Fitting the face model: face detail", 0.80),
         ("[dense reg 0.25]", "Fitting the face model: face detail", 0.86),
         ("Adding the face shape", "Adding the face shape", 0.87),
+        # Only with the skin texture on (about 80 s more).
+        ("Baking the skin texture", "Baking the skin texture", 0.88),
+        ("Skin texture: projecting the photos", "Baking the skin texture: photos", 0.89),
+        ("Skin texture: taking out the lighting", "Baking the skin texture: lighting", 0.915),
+        ("Skin texture: filling in", "Baking the skin texture: filling in", 0.925),
+        ("Skin texture: blending", "Baking the skin texture: blending", 0.955),
+        ("Skin texture: writing", "Baking the skin texture: saving", 0.97),
         ("Exporting the MetaHuman", "Exporting for MetaHuman", 0.98),
         ("Face model run finished", "Finishing", 0.99),
     ]
