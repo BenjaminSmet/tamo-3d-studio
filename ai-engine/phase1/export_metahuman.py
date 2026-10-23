@@ -236,7 +236,21 @@ def export(model: str, output: str, faces: int, smooth_strength: float = 1.0, tu
     ob.location = Vector(np.array(MH_NOSE) - scale * np.array([cx, nose[1], nose[2]]))
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
-    os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
+    out_dir = os.path.dirname(os.path.abspath(output))
+    os.makedirs(out_dir, exist_ok=True)
+    # Textures need a file name with an extension: images from a GLB come in as "Image_0", and Unreal's
+    # Interchange picks its texture reader by the extension (without one: "Invalid translator couldn't retrieve
+    # a payload" and an empty texture). Each texture is also written next to the FBX under that name, so it can
+    # be found by its relative path too, not only from the copy embedded in the FBX.
+    stem = os.path.splitext(os.path.basename(output))[0]
+    for k, img in enumerate(i for i in bpy.data.images if i.packed_file):
+        data = img.packed_file.data
+        ext = ".png" if data[:4] == b"\x89PNG" else ".jpg"
+        name = f"{stem}_albedo{ext}" if k == 0 else f"{stem}_texture{k}{ext}"
+        with open(os.path.join(out_dir, name), "wb") as fh:
+            fh.write(data)
+        img.name = name
+        img.filepath_raw = os.path.join(out_dir, name)
     bpy.ops.export_scene.fbx(filepath=output, path_mode="COPY", embed_textures=True, apply_unit_scale=True,
                              global_scale=1.0, axis_forward="-Z", axis_up="Y", mesh_smooth_type="FACE",
                              bake_space_transform=True)

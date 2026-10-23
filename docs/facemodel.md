@@ -49,7 +49,7 @@ weights into `~/.cache/gnm/models`. Restart the app, then pick **Face model
    It never touches the mouth seam or the eyes, and it only makes the lips fuller.
    The lip border is then raised 1.5 mm (`--lip-edge`), with the skin just outside it a little
    lower, so the lip outline reads as a crisp edge for MetaHuman's tracking.
-5. With **Skin texture** on (off by default in the app; the command line bakes it unless given
+5. With **Skin texture** on (on by default in the app and on the command line, which skips it when given
    `--no-texture`; about 1.5 minutes more and 7 GB of memory), the
    skin is baked from the photos (`texture.py`): projected through the fitted cameras, shine and
    the photos' lighting taken out, the views colour-matched and blended. `albedo.png` (4K) is

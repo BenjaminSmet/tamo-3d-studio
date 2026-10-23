@@ -58,7 +58,7 @@ Your existing runs under `library/projects/` show up automatically as versions.
 1. Pick or create a project, then add an actor.
 2. Drop in images and say which view each one is (front, three-quarter, side, back, or final
    look). Follow [shape-reference.md](shape-reference.md) for the front image.
-3. Pick the **Method**. **Front only (TRELLIS.2)**, the default, uses just the front image.
+3. Pick the **Method**. **Front only (TRELLIS.2)** uses just the front image.
    **Multi-view (Pixal3D)** also uses the Side and Three-quarter images and can follow the
    profile (nose, lips, chin, back of the skull) more closely, but only with turned views
    from the same shoot as the front, each showing the whole head; a photo that cuts off the
@@ -66,9 +66,10 @@ Your existing runs under `library/projects/` show up automatically as versions.
    Multi-view needs Pixal3D installed ([multiview.md](multiview.md)).
    **Face model (GNM)** fits Google's head model to the front photo and, when there are
    some, the Side, Three-quarter, Other side and Back images: a smooth skull and real lips, so
-   MetaHuman's solve has no bumps and no teeth poking through. It takes about 5.5 minutes.
-   Tick **Skin texture** to also bake `albedo.png` from the photos (about 1.5 minutes more).
-   It needs the face model installed ([facemodel.md](facemodel.md)).
+   MetaHuman's solve has no bumps and no teeth poking through. It is the default when it's
+   installed ([facemodel.md](facemodel.md)), and takes about 7 minutes. **Skin texture**, on by
+   default, bakes `albedo.png` from the photos so the head shows the skin in MetaHuman while you
+   place the markers; untick it for shape only (about 1.5 minutes quicker).
    Press **Generate head**. Progress shows in the viewer and in the queue on the left.
 4. Turn the head in the viewer (textured or clay), and download **MetaHuman head (FBX)**.
    In Unreal, import it with default settings, then MetaHuman Character → Import →

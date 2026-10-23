@@ -100,8 +100,8 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
   const [threeQuarterId, setThreeQuarterId] = useState<number | null>(null);
   const [otherSideId, setOtherSideId] = useState<number | null>(null);
   const [backId, setBackId] = useState<number | null>(null);
-  // The face model's skin texture is off unless asked for; the other methods share settings.texture.
-  const [skinTexture, setSkinTexture] = useState(false);
+  // The face model's skin texture is on by default (it helps placing MetaHuman's markers); the other methods share settings.texture.
+  const [skinTexture, setSkinTexture] = useState(true);
   const [model, setModel] = useState<Model>("trellis2");
   const [busy, setBusy] = useState(false);
   const fronts = actor.references.filter((r) => r.view === "front" || r.view === "unsorted");
@@ -122,10 +122,11 @@ function GenerateForm({ actor, multiviewFound, facemodelFound, onChanged, onErro
     setThreeQuarterId(threeQuarters[0]?.id ?? null);
     setOtherSideId(otherSides[0]?.id ?? null);
     setBackId(backs[0]?.id ?? null);
-    // Front only is the default: multi-view only does better with uncropped turned views from the same shoot.
-    setModel("trellis2");
+    // The face model is the default when it's installed; otherwise front only (multi-view only does better
+    // with uncropped turned views from the same shoot).
+    setModel(facemodelFound ? "gnm" : "trellis2");
     // Reset when switching actors or when new images arrive.
-  }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, otherSides[0]?.id, backs[0]?.id, canMultiview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [actor.id, fronts[0]?.id, sides[0]?.id, threeQuarters[0]?.id, otherSides[0]?.id, backs[0]?.id, canMultiview, facemodelFound]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (multiview && !settings.pipeline.endsWith("_cascade")) setSettings((s) => ({ ...s, pipeline: "1024_cascade" }));
