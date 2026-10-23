@@ -350,9 +350,20 @@ def main():
         V, L = geometry()
         final_parts = losses(V, L, True, 0, True)[1]
     V = V.numpy()
+    # the posed head's own mirror map: its reflection D H, moved onto H (H ~ A D H + b, vertex for vertex). Not the
+    # identity: the neck turns the head off x = 0, so a camera fitted to a mirrored photo needs it to come back
+    ys = V[skin, 1]
+    sel = np.flatnonzero(skin & (V[:, 1] > ys.max() - 0.7 * (ys.max() - ys.min())))   # the head, not the shoulders
+    src, dst = V[mirror.numpy()[sel]] * np.array([-1.0, 1.0, 1.0]), V[sel]
+    ms, md = src.mean(0), dst.mean(0)
+    U, _, Wt = np.linalg.svd((src - ms).T @ (dst - md))
+    A = (U @ np.diag([1.0, 1.0, np.sign(np.linalg.det(U @ Wt))]) @ Wt).T
+    b = md - A @ ms
+    mirror_map = {"A": A.tolist(), "b": b.tolist(),
+                  "residual_mm": float(np.linalg.norm(src @ A.T + b - dst, axis=1).mean() * 1000)}
     report = {"seconds": round(elapsed, 1), "final": final_parts, "history": history,
               "identity_rms": float(ident.pow(2).mean().sqrt()), "identity_abs_max": float(ident.abs().max()),
-              "expression_rms": float(expr.pow(2).mean().sqrt())}
+              "expression_rms": float(expr.pow(2).mean().sqrt()), "mirror_map": mirror_map}
     (out / "fit.json").write_text(json.dumps(report, indent=1))
     np.savez(out / "fit.npz", vertices=V, identity=ident.detach().numpy(), expression=expr.detach().numpy())
     # fitted pinhole cameras, for projecting the photos onto the head: x_cam = R X + t, u = f x/z + w/2
