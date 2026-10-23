@@ -12,8 +12,9 @@ from .config import Settings
 
 PIPELINES = ("512", "1024", "1024_cascade", "1536_cascade")
 TURNED_VIEWS = ("side", "three_quarter")
-# Every view besides the front that a method can take: the face model also takes the other side and the back.
-EXTRA_VIEWS = TURNED_VIEWS + ("other_side", "back")
+# Every view besides the front that a method can take: the face model also takes the other three-quarter,
+# the other side and the back.
+EXTRA_VIEWS = TURNED_VIEWS + ("other_three_quarter", "other_side", "back")
 
 
 @dataclass
@@ -202,8 +203,8 @@ class Pixal3DEngine:
 
 class GnmEngine:
     """Google's GNM face model through ai-engine/phase5/run_facemodel.py, in its own Python: a
-    front-only TRELLIS.2 head first, then GNM fitted to the front, side, three-quarter, other side
-    and back photos,
+    front-only TRELLIS.2 head first, then GNM fitted to the front, side, three-quarter, other
+    three-quarter, other side and back photos,
     with the TRELLIS.2 head's face shape added on top, and the skin texture (albedo.png) baked from
     the photos. The side views are optional."""
 
@@ -212,7 +213,7 @@ class GnmEngine:
     views = EXTRA_VIEWS
     needs_turned_view = False
     defaults = {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None, "three_quarter_id": None,
-                "other_side_id": None, "back_id": None}
+                "other_three_quarter_id": None, "other_side_id": None, "back_id": None}
 
     # Timed on an RTX 5070 Ti (about 5.5 minutes): TRELLIS.2 without a texture about 2 minutes,
     # most of it loading the models, which prints nothing; the fit about 2.5 minutes (most of it in

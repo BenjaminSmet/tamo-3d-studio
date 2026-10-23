@@ -56,7 +56,7 @@ weights into `~/.cache/gnm/models`. Restart the app, then pick **Face model
    written, and `head_metahuman.fbx` carries it.
 6. `model.glb`, `model.obj` and `head_metahuman.fbx`, exported without smoothing.
 
-Side, three-quarter, other-side and back photos are optional, but without them the depth of the
+Side, three-quarter, other three-quarter, other-side and back photos are optional, but without them the depth of the
 skull comes from GNM's average head, and the skin texture guesses whatever no photo shows (the
 far cheek, the back of the head). They work best from the same shoot as the front, in the same
 soft, even light, large (2000 px or more across the face), the whole head in frame, bald or with
@@ -66,7 +66,7 @@ From the command line:
 
 ```bash
 ~/tamo-gnm/.venv/bin/python ai-engine/phase5/run_facemodel.py --actor nia_okafor \
-    --front front.png --side side.png --three-quarter three_quarter.png [--other-side o.png] [--back b.png] \
+    --front front.png --side side.png --three-quarter three_quarter.png [--other-three-quarter ot.png] [--other-side o.png] [--back b.png] \
     [--no-texture]
 ```
 

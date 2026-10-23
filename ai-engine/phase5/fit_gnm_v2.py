@@ -7,9 +7,11 @@ to the silhouette. The identity prior is then loosened stage by stage, stopping 
 silhouette error or the head's asymmetry grows, with more lower-face expression components
 freed under regularisation.
 
-    python fit_gnm_v2.py --front F.png --three-quarter T.png --side S.png [--other-side O.png] [--back B.png] --out fit/
+    python fit_gnm_v2.py --front F.png --three-quarter T.png --side S.png [--other-three-quarter OT.png]
+        [--other-side O.png] [--back B.png] --out fit/
 
-The other side is a second profile, handed in facing left like the side (GNM is symmetric). The back has no
+The other side is a second profile, and the other three-quarter a second three-quarter view, both handed in
+facing left like the first (GNM is symmetric). The back has no
 face points: its camera starts at 180 degrees and is fitted from the head's outline down to the neck, at half
 the silhouette weight, so a poor back cut-out can't pull the skull much.
 
@@ -109,6 +111,8 @@ def main():
     ap.add_argument("--front", required=True, type=Path)
     ap.add_argument("--three-quarter", type=Path)
     ap.add_argument("--side", type=Path)
+    ap.add_argument("--other-three-quarter", type=Path,
+                    help="the other three-quarter view, handed in facing left like --three-quarter")
     ap.add_argument("--other-side", type=Path, help="the other profile, handed in facing left like --side")
     ap.add_argument("--back", type=Path, help="the back of the head; fitted from its outline only")
     ap.add_argument("--out", type=Path, required=True)
@@ -137,6 +141,7 @@ def main():
     views = [F.View("front", args.front, mp_model)]
     paths = {"front": args.front}
     for name, kind, path in (("three_quarter", "three_quarter", args.three_quarter), ("side", "side", args.side),
+                             ("other_three_quarter", "three_quarter", args.other_three_quarter),
                              ("other_side", "side", args.other_side), ("back", "back", args.back)):
         if not path:
             continue

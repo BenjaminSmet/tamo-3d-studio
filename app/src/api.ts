@@ -2,11 +2,12 @@
 // serves the built interface; VITE_API_BASE points elsewhere, e.g. from the packaged app.
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
-export type View = "front" | "three_quarter" | "side" | "other_side" | "back" | "look" | "unsorted";
+export type View = "front" | "three_quarter" | "side" | "other_three_quarter" | "other_side" | "back" | "look" | "unsorted";
 export const VIEWS: { value: View; label: string }[] = [
   { value: "front", label: "Front" },
   { value: "three_quarter", label: "Three-quarter" },
   { value: "side", label: "Side" },
+  { value: "other_three_quarter", label: "Other three-quarter" },
   { value: "other_side", label: "Other side" },
   { value: "back", label: "Back" },
   { value: "look", label: "Final look" },
@@ -51,6 +52,7 @@ export type JobSettings = Partial<Settings> & {
   model?: Model;
   side_id?: number | null;
   three_quarter_id?: number | null;
+  other_three_quarter_id?: number | null;
   other_side_id?: number | null;
   back_id?: number | null;
 };
