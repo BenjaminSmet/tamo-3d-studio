@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS actors (
 CREATE TABLE IF NOT EXISTS reference_images (
     id INTEGER PRIMARY KEY,
     actor_id INTEGER NOT NULL REFERENCES actors(id),
-    view TEXT NOT NULL,              -- front, three_quarter, side, other_side, back, look
+    view TEXT NOT NULL,              -- front, three_quarter, side, other_three_quarter, other_side, back, look
     path TEXT NOT NULL UNIQUE,
     width INTEGER NOT NULL,
     height INTEGER NOT NULL,

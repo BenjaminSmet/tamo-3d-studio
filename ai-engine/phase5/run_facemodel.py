@@ -7,7 +7,7 @@ heads, with a smooth skull, eyes and lips with depth over a proper mouth seam.
 
 One run:
 1. A front-only TRELLIS.2 head (Phase 1, in trellis/, shape only), for the hybrid in step 4.
-2. Cut-outs of the other photos (three-quarter, side, other side, back). GNM is symmetric, so
+2. Cut-outs of the other photos (three-quarter, side, other three-quarter, other side, back). GNM is symmetric, so
    the fit takes every turned view facing left: one that faces right is mirrored for the fit, and
    its fitted camera is reflected back across the head's symmetry plane afterwards, so the
    texture always projects the photo as taken (a mole stays on its own cheek).
@@ -26,7 +26,7 @@ face model's own Python (see docs/facemodel.md); TRELLIS.2 and the cut-outs run 
 Espalier-2's, given with --engine-python:
 
     ~/tamo-gnm/.venv/bin/python ai-engine/phase5/run_facemodel.py --actor nia_okafor \\
-        --front front.png --side side.png --three-quarter three_quarter.png [--other-side o.png] [--back b.png]
+        --front front.png --side side.png --three-quarter three_quarter.png [--other-three-quarter ot.png] [--other-side o.png] [--back b.png]
 """
 
 import argparse
@@ -78,6 +78,7 @@ def main() -> None:
     parser.add_argument("--front", required=True, type=Path)
     parser.add_argument("--side", type=Path)
     parser.add_argument("--three-quarter", type=Path)
+    parser.add_argument("--other-three-quarter", type=Path, help="the other three-quarter view")
     parser.add_argument("--other-side", type=Path, help="the other profile")
     parser.add_argument("--back", type=Path, help="the back of the head")
     parser.add_argument("--actor", required=True)
@@ -94,7 +95,7 @@ def main() -> None:
     args = parser.parse_args()
 
     inputs = [("front", args.front), ("three_quarter", args.three_quarter), ("side", args.side),
-              ("other_side", args.other_side), ("back", args.back)]
+              ("other_three_quarter", args.other_three_quarter), ("other_side", args.other_side), ("back", args.back)]
     inputs = [(name, path.resolve()) for name, path in inputs if path]
     for _, path in inputs:
         if not path.is_file():

@@ -56,8 +56,8 @@ Your existing runs under `library/projects/` show up automatically as versions.
 ## Using it
 
 1. Pick or create a project, then add an actor.
-2. Drop in images and say which view each one is (front, three-quarter, side, back, or final
-   look). Follow [shape-reference.md](shape-reference.md) for the front image.
+2. Drop in images and say which view each one is (front, three-quarter, side, other three-quarter, other side,
+   back, or final look). Follow [shape-reference.md](shape-reference.md) for the front image.
 3. Pick the **Method**. **Front only (TRELLIS.2)** uses just the front image.
    **Multi-view (Pixal3D)** also uses the Side and Three-quarter images and can follow the
    profile (nose, lips, chin, back of the skull) more closely, but only with turned views
@@ -65,7 +65,7 @@ Your existing runs under `library/projects/` show up automatically as versions.
    back of the skull gives a squeezed, tall head, so the run stops with a message instead.
    Multi-view needs Pixal3D installed ([multiview.md](multiview.md)).
    **Face model (GNM)** fits Google's head model to the front photo and, when there are
-   some, the Side, Three-quarter, Other side and Back images: a smooth skull and real lips, so
+   some, the Side, Three-quarter, Other three-quarter, Other side and Back images: a smooth skull and real lips, so
    MetaHuman's solve has no bumps and no teeth poking through. It is the default when it's
    installed ([facemodel.md](facemodel.md)), and takes about 7 minutes. **Skin texture**, on by
    default, bakes `albedo.png` from the photos so the head shows the skin in MetaHuman while you

@@ -110,7 +110,7 @@ def test_face_model_takes_turned_views_when_there_are_some(client):
     url = f"/api/actors/{actor['id']}/generations"
     job = client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()   # front only is fine
     assert job["settings"] == {"texture": False, "pipeline": "1024_cascade", "seed": 42, "side_id": None,
-                               "three_quarter_id": None, "other_side_id": None, "back_id": None, "model": "gnm"}
+                               "three_quarter_id": None, "other_three_quarter_id": None, "other_side_id": None, "back_id": None, "model": "gnm"}
     job = wait_for(client, job["id"])
     assert job["status"] == "done", job["error"]
     assert job["run_dir"].endswith("-facemodel-geometry")
@@ -131,14 +131,19 @@ def test_face_model_takes_turned_views_when_there_are_some(client):
     assert job["status"] == "done", job["error"]
     assert f"--three-quarter {three_quarter['path']}" in client.get(f"/api/jobs/{job['id']}/log").text
 
+    other_three_quarter = client.post(f"/api/actors/{actor['id']}/references",
+                                      files={"file": ("Nia -45.png", png(), "image/png")},
+                                      data={"view": "other_three_quarter"}).json()
     other_side = client.post(f"/api/actors/{actor['id']}/references",
                              files={"file": ("Nia right.png", png(), "image/png")}, data={"view": "other_side"}).json()
     back = client.post(f"/api/actors/{actor['id']}/references",
                        files={"file": ("Nia back.png", png(), "image/png")}, data={"view": "back"}).json()
     job = wait_for(client, client.post(url, json={"reference_id": front["id"], "model": "gnm"}).json()["id"])
     assert job["status"] == "done", job["error"]
+    assert job["settings"]["other_three_quarter_id"] == other_three_quarter["id"]
     assert job["settings"]["other_side_id"] == other_side["id"] and job["settings"]["back_id"] == back["id"]
     log = client.get(f"/api/jobs/{job['id']}/log").text
+    assert f"--other-three-quarter {other_three_quarter['path']}" in log
     assert f"--other-side {other_side['path']}" in log and f"--back {back['path']}" in log
     pixal3d = client.post(url, json={"reference_id": front["id"], "model": "pixal3d", "back_id": back["id"]})
     assert pixal3d.status_code == 422 and "other-side and back" in pixal3d.json()["detail"]

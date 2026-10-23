@@ -19,7 +19,7 @@ from PIL import Image, UnidentifiedImageError
 
 from .db import Database, now
 
-VIEWS = ("front", "three_quarter", "side", "other_side", "back", "look", "unsorted")
+VIEWS = ("front", "three_quarter", "side", "other_three_quarter", "other_side", "back", "look", "unsorted")
 IMAGE_FORMATS = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_SIDE = 8192

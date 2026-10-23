@@ -48,7 +48,8 @@ class NewGeneration(BaseModel):
     model: str = "trellis2"            # "pixal3d": multi-view, with a side and/or three-quarter image; "gnm": face model
     side_id: int | None = None         # multi-view and face model; the actor's newest of each view when left out
     three_quarter_id: int | None = None
-    other_side_id: int | None = None   # face model only
+    other_three_quarter_id: int | None = None   # face model only
+    other_side_id: int | None = None
     back_id: int | None = None
     texture: bool | None = None
     pipeline: str | None = None
@@ -234,7 +235,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for view in EXTRA_VIEWS:
             if view not in engine.views and options.pop(f"{view}_id") is not None:
                 raise HTTPException(422, "Only multi-view and the face model use side and three-quarter images."
-                                    if view in TURNED_VIEWS else "Only the face model uses other-side and back images.")
+                                    if view in TURNED_VIEWS else "Only the face model uses other three-quarter, other-side and back images.")
         if engine.views:
             for view in engine.views:
                 key = f"{view}_id"
