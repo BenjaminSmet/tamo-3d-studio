@@ -9,7 +9,8 @@ One run:
 1. A front-only TRELLIS.2 head (Phase 1, in trellis/, shape only), for the hybrid in step 4.
 2. Cut-outs of the other photos (three-quarter, side, other three-quarter, other side, back). GNM is symmetric, so
    the fit takes every turned view facing left: one that faces right is mirrored for the fit, and
-   its fitted camera is reflected back across the head's symmetry plane afterwards, so the
+   its fitted camera is reflected back afterwards (through the fitted head's own mirror map, as the
+   neck turns the head off x = 0), so the
    texture always projects the photo as taken (a mole stays on its own cheek).
 3. GNM fitted to the photos (fit_gnm_v2.py): MediaPipe face points on the front and
    three-quarter photos, the head's outline in every photo (the back's at half weight).
@@ -58,17 +59,22 @@ def cut_out(engine_python: Path, image: Path, out: Path, log: Path) -> Image.Ima
     return Image.open(out).convert("RGBA")
 
 
-def unmirror_cameras(cameras_json: Path, originals: dict[str, Path]) -> None:
-    """Cameras fitted to mirrored photos, reflected across the head's symmetry plane (x = 0) and given the photo
-    as taken: with D = diag(-1, 1, 1), x_cam = D R D X + D t puts a point X at w - u, where the fitted camera
-    put its mirror image D X at u."""
+def unmirror_cameras(cameras_json: Path, originals: dict[str, Path], mirror_map: dict | None = None) -> None:
+    """Cameras fitted to mirrored photos, given the photo as taken. With D = diag(-1, 1, 1), x_cam = D R D X + D t
+    puts a point X at w - u where the fitted camera put D X at u: it sees the head's reflection D H. The posed head
+    is not its own reflection (the neck turns it off x = 0), so the fit's mirror map H = A (D H) + b brings it back:
+    R' = D R D A^T, t' = D t - R' b."""
     cams = json.loads(cameras_json.read_text())
     D = [-1.0, 1.0, 1.0]
+    A = mirror_map["A"] if mirror_map else [[float(i == j) for j in range(3)] for i in range(3)]
+    b = mirror_map["b"] if mirror_map else [0.0, 0.0, 0.0]
     for name, original in originals.items():
         if name in cams:
             c = cams[name]
-            c["R"] = [[D[i] * c["R"][i][j] * D[j] for j in range(3)] for i in range(3)]
-            c["t"] = [D[i] * c["t"][i] for i in range(3)]
+            Rr = [[D[i] * c["R"][i][j] * D[j] for j in range(3)] for i in range(3)]
+            R = [[sum(Rr[i][k] * A[j][k] for k in range(3)) for j in range(3)] for i in range(3)]
+            c["R"] = R
+            c["t"] = [D[i] * c["t"][i] - sum(R[i][k] * b[k] for k in range(3)) for i in range(3)]
             c["image"], c["mirrored_for_fit"] = str(original), True
     cameras_json.write_text(json.dumps(cams, indent=1))
 
@@ -170,8 +176,9 @@ def main() -> None:
         cmd += [f"--{name.replace('_', '-')}", str(views / f"{name}.png")]
     if run_logged(cmd, log) != 0:
         finish("failed")
-    record["fit"] = json.loads((fit / "fit.json").read_text())["final"]
-    unmirror_cameras(fit / "cameras.json", mirrored)
+    fit_report = json.loads((fit / "fit.json").read_text())
+    record["fit"] = fit_report["final"]
+    unmirror_cameras(fit / "cameras.json", mirrored, fit_report.get("mirror_map"))
 
     print("Adding the face shape from the TRELLIS.2 head...", flush=True)
     hybrid = run_dir / "hybrid"
